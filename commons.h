@@ -21,7 +21,7 @@
 struct Header {
 
 	uint8_t MessageType;
-	char *UOID;
+	char* uoid;
 	uint8_t ttl;
 	uint8_t reserved;
 	uint32_t dataLength;

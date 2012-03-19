@@ -49,22 +49,58 @@ struct client_thread_data d1;
 		// TODO: construct				
 		
 		return msg;
-	}
+	} 	
 
-	char* constructJoinReqMessage(Header hdr,uint32_t hostLoc,char* hostName,char* hostPort) 
+	char* constructJoinReqMessage(Header* hdr,uint32_t hostLoc,char* hostName,char* hostPort,char * msg) 
 	{
 
+	uint8_t param1 = 0xFC;
+	char* param2 = "AAAAAAAAAAAAAAAAAAAA";
+	uint8_t param3 = 10;
+	uint8_t param4 = 20;
+	uint32_t param5 = 100;
+	
+	
 		int msgLen = 32 + strlen(hostName);
-		char* msg = (char*)malloc(msgLen * sizeof(char));
-		hdr.dataLength = strlen(hostName)+6;
-		memcpy((void*)msg ,(void*)&hdr ,27);		//Copy the common header
+		msg = (char*)malloc(msgLen * sizeof(char));
+		hdr->dataLength = strlen(hostName)+6;
+		/**
+				
+			uint8_t MessageType;
+			char* UOID;
+			uint8_t ttl;
+			uint8_t reserved;
+			uint32_t dataLength
+	**/
+	
+	printf("MessageType = %#x\n", hdr->MessageType);
+	printf("uoid = %s\n", hdr->uoid);
+	printf("ttl = %u\n", hdr->ttl);
+	printf("reserved = %u\n", hdr->reserved);
+	printf("dataLength = %d\n", hdr->dataLength);
+	printf("hostLoc = %d\n", hostLoc);
+	printf("hostport = %d\n", hostPort);
+	printf("hostname = %s\n", hostName);
+	
+	/**
+		memcpy(msg , &hdr->MessageType , sizeof(uint8_t));		//Copy the common header
+		memcpy(msg+1 , hdr->uoid , 20);		
+		memcpy(msg+21 ,&hdr->ttl , sizeof(uint8_t));		
+		memcpy(msg+22 ,&hdr->reserved , sizeof(uint8_t));		
+		memcpy(msg+23 ,&hdr->dataLength , sizeof(uint32_t));		
+	**/	
+		memcpy(msg , &param1 , 1);		//Copy the common header
+		memcpy(msg+1 , param2 , 20);		
+		memcpy(msg+21 ,&param3 , 1);		
+		memcpy(msg+22 ,&param4 , 1);		
+		memcpy(msg+23 ,&param5 , 4);
 		
-		memcpy((void*)(msg+27),(void*)&hostLoc,4);
+		memcpy(msg+27, &hostLoc,4);		
+		memcpy(msg+31, &hostPort,2);
 		
-		memcpy((void*)(msg+31),(void*)hostPort,2);
-		
-		memcpy((void*)(msg+33),(void*)hostName,strlen(hostName));
-		
+		memcpy(msg+33, hostName, strlen(hostName));
+		msg[34]='\0';
+		printf("while construction:%s\n",msg);
 		return msg;
 	}
 // }
@@ -106,21 +142,23 @@ int beacon;
 
 char* nodeID;
 
-char* GenNodeID(char *hostname, char *portNo)
+void GenNodeID(char *hostname, char *portNo)
 {
-	timeval time;
+	timeval time;	
 	gettimeofday(&time, NULL);
-	long t1=time.tv_sec*1000+(time.tv_usec/1000.0);
-	char *nodeID;
+	double t1=time.tv_sec * 1000 + (time.tv_usec / 1000.0);
+	char * temp;
+	temp=new char[10];
 	strcat(nodeID,hostname);
 	strcat(nodeID,"_");
 	strcat(nodeID,portNo);
 	strcat(nodeID,"_");
-	sprintf(nodeID,"%l",t1);
-	return nodeID;
+	sprintf(temp,"%012.3f",t1);
+	strcat(nodeID,temp);
+	printf(" => NodeID:%s\n" , nodeID);
 }
 
-char* GetUOID(char *node_inst_id,char *obj_type,char *uoid_buf,int uoid_buf_sz)
+void GetUOID(char *node_inst_id,char *obj_type,char *uoid_buf,int uoid_buf_sz)
 {
   static unsigned long seq_no=(unsigned long)1;
   char sha1_buf[SHA_DIGEST_LENGTH], str_buf[104];
@@ -129,8 +167,8 @@ char* GetUOID(char *node_inst_id,char *obj_type,char *uoid_buf,int uoid_buf_sz)
   SHA1((unsigned char*)str_buf,strlen(str_buf),(unsigned char*)sha1_buf);
   memset(uoid_buf,0,uoid_buf_sz);
   memcpy(uoid_buf,sha1_buf,min(uoid_buf_sz,sizeof(sha1_buf)));
-
-  return uoid_buf;
+  printf("UOID = %s \n", uoid_buf);
+  //return uoid_buf;
 }
 
 int client_connect(void *arg,int no) //1 is returned for unsuccessful connection
@@ -188,7 +226,10 @@ int client_connect(void *arg,int no) //1 is returned for unsuccessful connection
 
 void *client_connection(void *arg)	//Client (char *hostname,char *server_port)
 {
+	printf("[client] inside thread\n");
 	int return_value;
+	char *msg;
+	msg=new char[100];
     if(beacon)
 	{
 		for(int j=0;j<sizeof(((struct client_thread_data*)arg)->s_port);j++)
@@ -213,16 +254,18 @@ void *client_connection(void *arg)	//Client (char *hostname,char *server_port)
 			no++;
 			return_value=client_connect(arg,(no%4));
 		}while(return_value);
-		//send join request to that beacon.
+		//send join request to that beacon to which it got connected.
 		//construct header struct
-		Header h1;
+		Header* h1 = (Header*)malloc(27);
 		char *uoid_buf;
 		uoid_buf=new char[20];
 		GetUOID(nodeID,"msg",uoid_buf,20);
-		h1.MessageType=0xFC;
-		h1.UOID = uoid_buf;
-		h1.reserved = 0;
-		h1.ttl = 3;		//needs to be read from config file
+		h1->MessageType=0xFC;
+		h1->uoid = uoid_buf;
+		h1->reserved = 0;
+		h1->ttl = 3;		//needs to be read from config file
+		constructJoinReqMessage(h1,3134382376,"nunki.usc.edu","12024",msg);
+		printf("message is:%s\n",msg);
 	}
 	printf("required connections done\n");
 	sleep(50);
@@ -232,7 +275,8 @@ void *client_connection(void *arg)	//Client (char *hostname,char *server_port)
 
 void *server_connection(void *dummy)		//Server (int my_port) //need port no, it listens to only one port
 {
-    struct sockaddr_in serv_addr;
+    printf("[server] inside thread\n");
+	struct sockaddr_in serv_addr;
 	int nSocket;
 	int my_port;
     nSocket = socket(AF_INET,SOCK_STREAM,0);
@@ -260,9 +304,10 @@ void *server_connection(void *dummy)		//Server (int my_port) //need port no, it 
     }
     
 	//get nodeID
-	nodeID=GenNodeID("nunki.usc.edu",serverport);
-
-    if(listen(nSocket,BACKLOG) == -1)
+	nodeID=new char[100];
+	printf("serverPort = %s\n" , serverport);
+	GenNodeID("nunki.usc.edu" , serverport);
+	if(listen(nSocket,BACKLOG) == -1)
 	{
 		perror("Server: listen\n");
         exit(0);
@@ -302,11 +347,11 @@ int main(int argc, char* argv[])
 		d1.s_port[1]="12025";
 		d1.s_port[2]="12026";
 		d1.s_port[3]="12027";
-		
+	printf("creating server thread\n");	
 	server = pthread_create( &thread1, NULL, server_connection, (void*) dummy);
 	if( server == 0)
 		printf("Server thread creation successful\n");
-		
+	printf("creating client thread\n");		
 	client = pthread_create( &thread2, NULL, client_connection, (void*) &d1);
 	if( client == 0)
 		printf("Client thread creation successful\n");

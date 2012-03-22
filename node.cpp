@@ -26,6 +26,7 @@
 #define min(A,B) (((A)>(B)) ? (B) : (A))
 #endif /* ~min */
 
+#define HEADER_SIZE 27
 #include <openssl/sha.h>
 #define BACKLOG 5
 
@@ -37,73 +38,212 @@ struct client_thread_data
 
 struct client_thread_data d1;
 
-//class Node {
+int my_server_port;
+char *serverport;
+int beacon;
+char* nodeID;
 
-	char* constructJoinRespMessage(long uoid,long distance,char* hostName,char* hostPort,Header hdr,u_int msgType) 
+unsigned char *GetUOID(char *obj_type, unsigned char *uoid_buf, long unsigned int uoid_buf_sz){
+
+        static unsigned long seq_no=(unsigned long)1;
+        unsigned char sha1_buf[SHA_DIGEST_LENGTH], str_buf[104];
+
+        snprintf((char *)str_buf, sizeof(str_buf), "%s_%s_%1ld", nodeID, obj_type, (long)seq_no++);
+	printf(".....REAL = %s\n" , str_buf);
+
+        SHA1(str_buf, strlen((const char *)str_buf), sha1_buf);
+        memset(uoid_buf, 0, uoid_buf_sz);
+        memcpy(uoid_buf, sha1_buf,min(uoid_buf_sz,sizeof(sha1_buf)));
+	
+	printf(".....ENCODED = %s\n" , uoid_buf);
+        return uoid_buf;
+}
+
+	unsigned char* constructHelloMessage(	char* hostPort,
+				     		unsigned char *header, 
+			 		     	unsigned char *buffer) {
+
+		Header* h1 = (Header*)malloc(27);
+		unsigned char uoid_buf[SHA_DIGEST_LENGTH] ;
+		uint32_t len = 0 ;
+
+		GetUOID( const_cast<char *> ("msg"), uoid_buf, sizeof(uoid_buf)) ;
+
+		// fill message body buffer
+                unsigned char host[256];
+                gethostname((char *)host, 256) ;
+                host[255] = '\0' ;
+                len = strlen((char *)host) + 2 ;
+                buffer = (unsigned char *)malloc(len) ;
+
+                memset(buffer, '\0', len) ;
+                /*for(unsigned int i = 0;i<20;i++){
+                        buffer[i] = mes.uoid[i];
+                        //printf("%02x-", mes.uoid[i]) ;
+                }*/
+                memcpy(buffer, &(hostPort), 2) ;
+                sprintf((char *)&buffer[2], "%s",  host);
+
+		// fill header
+		header[0] = 0xfa;
+		memcpy((char*)&header[1] , uoid_buf , SHA_DIGEST_LENGTH);
+		header[21] = 0x01;
+		header[22] = 0x00;
+		memcpy((char *)&header[23], &(len), 4);
+
+		printf("[client] => header len : %d \n", strlen((char *)header));
+//		printf("[client] => header[24-27] : %d \n", data_len);
+		printf("[client] => buffer len : %d \n", strlen((char *)buffer));
+		printf("[client] => message body len : %d \n", len);
+	
+		free(h1);		
+
+		return buffer;
+
+	}
+
+	unsigned char* constructJoinRespMessage(unsigned char requestor_uoid[],
+						uint32_t distance,
+						char* hostPort,
+				     		unsigned char *header, 
+			 		     	unsigned char *buffer) 
 	{
 
+		Header* h1 = (Header*)malloc(27);
+		unsigned char uoid_buf[SHA_DIGEST_LENGTH] ;
+		uint32_t len = 0 ;
 
-		int msgLen = 52 + strlen(hostName);
-		char* msg = (char*)malloc(msgLen * sizeof(char));
-		
-		// TODO: construct				
-		
-		return msg;
+		GetUOID( const_cast<char *> ("msg"), uoid_buf, sizeof(uoid_buf)) ;
+		h1->MessageType=0xFB;
+		h1->uoid = (char *)uoid_buf;
+		h1->reserved = 0;
+		h1->ttl = 3;		//needs to be read from config file
+ 
+/*
+                if (mes.status == 1){
+                        buffer = mes.buffer ;
+                        len = mes.buffer_len ;
+                }
+                else{	
+*/
+                        unsigned char host[256];
+                        gethostname((char *)host, 256) ;
+                        host[255] = '\0' ;
+                        len = strlen((char *)host) + 26 ;
+                        buffer = (unsigned char *)malloc(len) ;
+
+                        memset(buffer, '\0', len) ;
+                        memcpy(buffer, requestor_uoid, 20) ;
+                        /*for(unsigned int i = 0;i<20;i++){
+                                buffer[i] = mes.uoid[i];
+                                //printf("%02x-", mes.uoid[i]) ;
+                        }*/
+                        memcpy(&buffer[20], &(distance), 4) ;
+                        memcpy(&buffer[24], &(hostPort), 2) ;
+                        sprintf((char *)&buffer[26], "%s",  host);
+//  		}
+
+                  header[0] = 0xfb;
+ 		  memcpy((char*)&header[1] , h1->uoid , SHA_DIGEST_LENGTH);
+                  memcpy((char *)&header[21], &(h1->ttl), 1);
+                  header[22] = 0x00;
+                  memcpy((char *)&header[23], &(len), 4);
+
+		printf("[client] => header len : %d \n", strlen((char *)header));
+//		printf("[client] => header[24-27] : %d \n", data_len);
+		printf("[client] => buffer len : %d \n", strlen((char *)buffer));
+		printf("[client] => message body len : %d \n", len);
+	
+		free(h1);		
+
+		return buffer;
+
 	} 	
 
-	char* constructJoinReqMessage(Header* hdr,uint32_t hostLoc,char* hostName,char* hostPort,char * msg) 
+
+	unsigned char *constructJoinReqMessage(uint32_t hostLoc,
+				     char* hostPort,
+				     unsigned char *header, 
+		 		     unsigned char *buffer
+				     ) 
 	{
 
-	uint8_t param1 = 0xFC;
-	char* param2 = "AAAAAAAAAAAAAAAAAAAA";
-	uint8_t param3 = 10;
-	uint8_t param4 = 20;
-	uint32_t param5 = 100;
+		Header* h1 = (Header*)malloc(27);
+		unsigned char uoid_buf[SHA_DIGEST_LENGTH] ;
+		uint32_t len = 0 ;
+
+		GetUOID( const_cast<char *> ("msg"), uoid_buf, sizeof(uoid_buf)) ;
+		h1->MessageType=0xFC;
+		h1->uoid = (char *)uoid_buf;
+		h1->reserved = 0;
+		h1->ttl = 3;		//needs to be read from config file
+
+/*              if (mes.status == 1){
+                        buffer = mes.buffer ;
+                        len = mes.buffer_len ;
+                }
+                else{		*/
+                        unsigned char host[256] ;
+                        gethostname((char *)host, 256) ;
+                        host[255] = '\0' ;
+                        len = strlen((char *)host) + 6 ;
+                        buffer = (unsigned char *)malloc(len) ;
+                        memset(buffer, '\0', len) ;
+                        memcpy((unsigned char *)buffer, &(hostLoc), 4) ;
+                        memcpy((unsigned char *)&buffer[4], &(hostPort), 2) ;
+                        sprintf((char *)&buffer[6], "%s",  host);
+  //              }
+
+                header[0] = 0xfc;
+		memcpy((char*)&header[1] , h1->uoid , SHA_DIGEST_LENGTH);
+                memcpy((char *)&header[21], &(h1->ttl), 1) ;
+                header[22] = 0x00 ;
+                memcpy((char *)&header[23], &(len), 4) ;
+
+		printf("[client] => header len : %d \n", strlen((char *)header));
+//		printf("[client] => header[24-27] : %d \n", data_len);
+		printf("[client] => buffer len : %d \n", strlen((char *)buffer));
+		printf("[client] => message body len : %d \n", len);
 	
-	
-		int msgLen = 32 + strlen(hostName);
-		msg = (char*)malloc(msgLen * sizeof(char));
-		hdr->dataLength = strlen(hostName)+6;
-		/**
-				
-			uint8_t MessageType;
-			char* UOID;
-			uint8_t ttl;
-			uint8_t reserved;
-			uint32_t dataLength
-	**/
-	
-	printf("MessageType = %#x\n", hdr->MessageType);
-	printf("uoid = %s\n", hdr->uoid);
-	printf("ttl = %u\n", hdr->ttl);
-	printf("reserved = %u\n", hdr->reserved);
-	printf("dataLength = %d\n", hdr->dataLength);
-	printf("hostLoc = %d\n", hostLoc);
-	printf("hostport = %d\n", hostPort);
-	printf("hostname = %s\n", hostName);
-	
-	/**
+		free(h1);		
+
+		return buffer;
+
+///////////////////////////////////////
+/**
+	int msgLen = 32 + strlen(hostName);
+	msg = (char*)malloc(msgLen * sizeof(char));
+	hdr->dataLength = strlen(hostName)+6;
+
+		memset(buffer, '\0', msgLen) ;
 		memcpy(msg , &hdr->MessageType , sizeof(uint8_t));		//Copy the common header
-		memcpy(msg+1 , hdr->uoid , 20);		
+		memcpy(msg+1 , hdr->uoid , SHA_DIGEST_LENGTH);		
 		memcpy(msg+21 ,&hdr->ttl , sizeof(uint8_t));		
 		memcpy(msg+22 ,&hdr->reserved , sizeof(uint8_t));		
 		memcpy(msg+23 ,&hdr->dataLength , sizeof(uint32_t));		
-	**/	
-		memcpy(msg , &param1 , 1);		//Copy the common header
-		memcpy(msg+1 , param2 , 20);		
-		memcpy(msg+21 ,&param3 , 1);		
-		memcpy(msg+22 ,&param4 , 1);		
-		memcpy(msg+23 ,&param5 , 4);
-		
+	
 		memcpy(msg+27, &hostLoc,4);		
 		memcpy(msg+31, &hostPort,2);
 		
 		memcpy(msg+33, hostName, strlen(hostName));
-		msg[34]='\0';
-		printf("while construction:%s\n",msg);
+//		msg[34]='\0';
+
+		printf("\t=============\n");
+		printf("MessageType = %#x\n", hdr->MessageType);
+		printf("uoid = %s\n", hdr->uoid);
+		printf("ttl = %u\n", hdr->ttl);
+		printf("reserved = %u\n", hdr->reserved);
+		printf("dataLength = %d\n", hdr->dataLength);
+		printf("hostLoc = %d\n", hostLoc);
+		printf("hostport = %d\n", hostPort);
+		printf("hostname = %s\n", hostName);
+		printf("\t===========\n");	
+	
+		printf(".....Message DONE:%s , Len:%d\n",msg, strlen(msg));
+
 		return msg;
+**/
 	}
-// }
 
 
 // class StateTransitionFSM 
@@ -135,12 +275,7 @@ struct client_thread_data d1;
 	// }
 // }
 
-int my_server_port;
-char *serverport;
 
-int beacon;
-
-char* nodeID;
 
 void GenNodeID(char *hostname, char *portNo)
 {
@@ -158,24 +293,13 @@ void GenNodeID(char *hostname, char *portNo)
 	printf(" => NodeID:%s\n" , nodeID);
 }
 
-void GetUOID(char *node_inst_id,char *obj_type,char *uoid_buf,int uoid_buf_sz)
-{
-  static unsigned long seq_no=(unsigned long)1;
-  char sha1_buf[SHA_DIGEST_LENGTH], str_buf[104];
 
-  snprintf(str_buf, sizeof(str_buf), "%s_%s_%1ld",node_inst_id, obj_type, (long)seq_no++);
-  SHA1((unsigned char*)str_buf,strlen(str_buf),(unsigned char*)sha1_buf);
-  memset(uoid_buf,0,uoid_buf_sz);
-  memcpy(uoid_buf,sha1_buf,min(uoid_buf_sz,sizeof(sha1_buf)));
-  printf("UOID = %s \n", uoid_buf);
-  //return uoid_buf;
-}
 
 int client_connect(void *arg,int no) //1 is returned for unsuccessful connection
 {
 	struct addrinfo hints, *server_info;    
-    int nSocket=0;
-    int status;
+        int nSocket=0;
+        int status;
 	int port_temp;
 	int con;
 	char *hostname;
@@ -215,7 +339,7 @@ int client_connect(void *arg,int no) //1 is returned for unsuccessful connection
 		printf("Will now sleep for 5 seconds \n");
 		close(nSocket);
 		return 1;
-	} 
+	}
 	else 
 	{
 		printf("Successful connection to port: %s \n",server_port);
@@ -254,18 +378,36 @@ void *client_connection(void *arg)	//Client (char *hostname,char *server_port)
 			no++;
 			return_value=client_connect(arg,(no%4));
 		}while(return_value);
+
 		//send join request to that beacon to which it got connected.
 		//construct header struct
-		Header* h1 = (Header*)malloc(27);
-		char *uoid_buf;
-		uoid_buf=new char[20];
-		GetUOID(nodeID,"msg",uoid_buf,20);
-		h1->MessageType=0xFC;
-		h1->uoid = uoid_buf;
-		h1->reserved = 0;
-		h1->ttl = 3;		//needs to be read from config file
-		constructJoinReqMessage(h1,3134382376,"nunki.usc.edu","12024",msg);
-		printf("message is:%s\n",msg);
+
+		unsigned char *buffer;
+		unsigned char header[HEADER_SIZE];
+		buffer = constructJoinReqMessage(3134382376 , "12024" , header , buffer);
+		printf(".....After header :%d\n",strlen((char *)header));
+		printf(".....After buffer :%d\n",strlen((char *)buffer));
+/**
+		unsigned char requestor_uoid[],
+		long distance,
+		char* hostName,
+		char* hostPort,
+**/
+		unsigned char *buffer2;
+		unsigned char uoid_buf[SHA_DIGEST_LENGTH];
+		uint32_t len = 0;
+		GetUOID( const_cast<char *> ("msg"), uoid_buf, sizeof(uoid_buf));
+		unsigned char header2[HEADER_SIZE];
+		buffer2 = constructJoinRespMessage(uoid_buf , 10000 , "12022" , header2 , buffer2);
+		printf(".....After header2 :%d\n",strlen((char *)header2));
+		printf(".....After buffer2 :%d\n",strlen((char *)buffer2));
+
+		unsigned char *buffer3;
+		unsigned char header3[HEADER_SIZE];
+		buffer3 = constructHelloMessage(	"12023", header3,  buffer3  );
+		printf(".....After header3 :%d\n",strlen((char *)header3));
+		printf(".....After buffer3 :%d\n",strlen((char *)buffer3));
+
 	}
 	printf("required connections done\n");
 	sleep(50);
@@ -305,13 +447,15 @@ void *server_connection(void *dummy)		//Server (int my_port) //need port no, it 
     
 	//get nodeID
 	nodeID=new char[100];
-	printf("serverPort = %s\n" , serverport);
+	printf("[server] serverPort = %s\n" , serverport);
+    
 	GenNodeID("nunki.usc.edu" , serverport);
+        printf("[server] Generated Node Id :%s\n",nodeID);
 	if(listen(nSocket,BACKLOG) == -1)
 	{
 		perror("Server: listen\n");
-        exit(0);
-    }
+	        exit(0);
+    	}
 	sleep(50);
 }
 

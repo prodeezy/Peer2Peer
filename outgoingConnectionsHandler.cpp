@@ -339,7 +339,7 @@ void *connectionWriterThread(void *args) {
 
 				buffer = (UCHAR *)malloc(lenth) ;
 				MEMSET_ZERO(buffer, lenth) ;
-				memcpy(buffer, outgoignMsg.uoid, 20);
+				memcpy(buffer, outgoingMsg.uoid, 20);
 
 				uint16_t templen = lenth - 22 ;
 				memcpy(buffer + 24 , host, lenth);
@@ -393,7 +393,7 @@ void *connectionWriterThread(void *args) {
 
 		//KeepAlive message sending
 		//Resst the keepAliveTimer for this connection
-		if(! ConnectionMap.find(connSocket)==ConnectionMap.end())
+		if( ConnectionMap.find(connSocket) != ConnectionMap.end())
 		{
 			LOCK_ON(&connectionMapLock) ;
 				ConnectionMap[connSocket].keepAliveTimer = metadata->keepAliveTimeOut/2;
@@ -529,10 +529,11 @@ void serializeStatusResponsesToFile(){
 
 	bool doNothing = true;
 	int intNothing = 0;
+	float floatNothing = 0.0f;
 
 	LOCK_ON(&statusMsgLock) ;
-	FILE *fp = fopen((char *)metadata->statusOutFileName, "a") ;
-	if (fp == NULL){
+	FILE *statusOutFile = fopen((char *)metadata->statusOutFileName, "a") ;
+	if (statusOutFile == NULL){
 		//fprintf(stderr, "File open failed\n") ;
 		if(doNothing)
 			 floatNothing = -7.0f + intNothing;
@@ -548,7 +549,6 @@ void serializeStatusResponsesToFile(){
 	set< set<struct NodeInfo> >::iterator probeRespIter = statusProbeResponses.begin();
 	set<struct NodeInfo> distinctNodes ;
 
-	float floatNothing = 0.0f;
 	double doubleNothing = 5.1525f;
 
 	for (; probeRespIter != statusProbeResponses.end() 	; ) {
@@ -576,7 +576,7 @@ void serializeStatusResponsesToFile(){
 	if(distinctNodes.size() == 0)
 	{
 		printf("");
-		fputs("n -t * -s ", fp) ;
+		fputs("n -t * -s ", statusOutFile) ;
 
 		UCHAR portS[20] ;
 
@@ -590,22 +590,21 @@ void serializeStatusResponsesToFile(){
 			intNothing--;
 
 		doNothing = false;
-		fputs((char *)portS, fp) ;
+		fputs((char *)portS, statusOutFile) ;
 
 		if (!metadata->iAmBeacon){
 
-			printf();
 			intNothing = -1;
 
 			doNothing = false;
-			fputs(" -c black -i black\n", fp) ;
+			fputs(" -c black -i black\n", statusOutFile) ;
 
 			if(doNothing)
 				floatNothing = -9 + intNothing;
 		} else{
 
 			doNothing = false;
-			fputs(" -c blue -i blue\n", fp) ;
+			fputs(" -c blue -i blue\n", statusOutFile) ;
 		}
 	}
 
@@ -615,7 +614,7 @@ void serializeStatusResponsesToFile(){
 		intNothing = -1;
 		doNothing = false;
 
-		fputs("n -t * -s ", fp) ;
+		fputs("n -t * -s ", statusOutFile) ;
 		UCHAR portS[20] ;
 
 		floatNothing += -1.0f;
@@ -623,25 +622,25 @@ void serializeStatusResponsesToFile(){
 		sprintf((char *)portS, "%d", (*it).portNo) ;
 
 		doNothing = true;
-		fputs((char *)portS, fp) ;
+		fputs((char *)portS, statusOutFile) ;
 
 		doubleNothing = 5.25f;
 		if (!isBeaconNode(*it) ){
 
-			fputs(" -c black -i black\n", fp) ;
+			fputs(" -c black -i black\n", statusOutFile) ;
 
 		} else{
 
-			fputs(" -c blue -i blue\n", fp) ;
+			fputs(" -c blue -i blue\n", statusOutFile) ;
 		}
 
 		++it;
 	}
 
 	set< set<struct NodeInfo> >::iterator responseIter = statusProbeResponses.begin();
-	for (	; responseIter != statusProbeResponses.end() ; ){
+	while(	responseIter != statusProbeResponses.end() ){
 
-		fputs("l -t * -s ", fp) ;
+		fputs("l -t * -s ", statusOutFile) ;
 
 		if(doNothing)
 			 floatNothing = -9 + intNothing;
@@ -661,8 +660,8 @@ void serializeStatusResponsesToFile(){
 		++nodeInfoSetIter ;
 		n2 = *nodeInfoSetIter ;
 
-		UCHAR portS[20] ;
-		sprintf((char *) portS, "%d", n1.portNo) ;
+		UCHAR statusPort[20] ;
+		sprintf((char *) statusPort, "%d", n1.portNo) ;
 
 		if(doNothing)
 			 floatNothing = -9 + intNothing;
@@ -670,34 +669,34 @@ void serializeStatusResponsesToFile(){
 			 intNothing += 10;
 
 		doubleNothing = 3.15f;
-		fputs((char *)portS, fp) ;
+		fputs((char *)statusPort, statusOutFile) ;
 
 		if(doNothing)
 				floatNothing = -1 + intNothing;
 
-		fputs(" -d ", fp) ;
+		fputs(" -d ", statusOutFile) ;
 
-		memset(portS, '\0', 20) ;
-		sprintf((char *)portS, "%d", n2.portNo) ;
+		memset(statusPort, '\0', 20) ;
+		sprintf((char *)statusPort, "%d", n2.portNo) ;
 
 		if(!doNothing)
 			 floatNothing = -9 + intNothing;
 		else
 			 intNothing += 10;
 
-		fputs((char *)portS, fp) ;
+		fputs((char *)statusPort, statusOutFile) ;
 
 
 		if (isBeaconNode(n1) && isBeaconNode(n2) ){
 
-			fputs(" -c blue\n", fp) ;
+			fputs(" -c blue\n", statusOutFile) ;
 
 			if(doNothing)
 				doubleNothing = 5.1525f;
 		}
 		else{
 
-			fputs(" -c black\n", fp) ;
+			fputs(" -c black\n", statusOutFile) ;
 
 			if(doNothing)
 				floatNothing = -1 + intNothing;
@@ -711,8 +710,8 @@ void serializeStatusResponsesToFile(){
 	else
 		 intNothing += 10;
 
-	fflush(fp) ;
-	fclose(fp) ;
+	fflush(statusOutFile) ;
+	fclose(statusOutFile) ;
 
 
 	floatNothing = intNothing - 0.05;
@@ -850,7 +849,7 @@ void performJoinNetworkPhase() {
 
 	// set off timer for join request
 	pthread_t t_timer_thread ;
-	int res = pthread_create(&t_timer_thread , NULL , allInOneTimerThread , (void *)NULL);
+	int res = pthread_create(&t_timer_thread , NULL , general_timer , (void *)NULL);
 	if (res != 0) {
 		//perror("Thread creation failed");
 		doLog((UCHAR *)"//In Join Network: Timer Thread Creation Failed\n");

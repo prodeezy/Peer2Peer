@@ -10,15 +10,15 @@ map<int, struct ConnectionInfo> ConnectionMap;
 int nodeProcessId;
 NEIGHBOUR_MAP currentNeighbours;
 bool joinNetworkPhaseFlag= false;
-unsigned char logFilePath[512];
-unsigned char initNeighboursFilePath[512];
+UCHAR logFilePath[512];
+UCHAR initNeighboursFilePath[512];
 int acceptProcessId = -1;
 int joinTimeOutFlag = 0;
 pthread_mutex_t connectionMapLock ;
 int acceptServerSocket = 0;
-map<string, struct CachePacket> MessageCache ;
-set< set<struct NodeInfo> > statusProbeResponses ;
-list<struct JoinResponseInfo> joinResponses ;
+map<string, struct CachePacket> MessageCache;
+set< set<struct NodeInfo> > statusProbeResponses;
+list<struct JoinResponseInfo> joinResponses;
 list<pthread_t > childThreadList;
 int statusTimerFlag = 0;
 pthread_cond_t statusMsgCV;
@@ -29,9 +29,296 @@ pthread_mutex_t msgCacheLock ;
 pthread_mutex_t currentNeighboursLock ;
 bool globalShutdownToggle = 0 ;
 
+struct NodeInfo n;
+
+
+
+
+/***
+ ***********************************
+ * 			  Logger
+ ***********************************
+ **/
+
+UCHAR msg_type[5];
+
+void getNeighbor(int sockfd)
+{
+	LOCK_ON(&connectionMapLock);
+		n = ConnectionMap[sockfd].neighbourNode;
+	LOCK_OFF(&connectionMapLock);
+}
+
+unsigned char log_entry[512];
+uint32_t data_len=0;
+UCHAR data[256];
+FILE *loggerRef = NULL;
+
+void decideBasedOnMode(UCHAR mode, struct timeval tv, uint8_t ttl, UCHAR uoid[4]) {
+
+	if (mode == 's') {
+			//log for messages sent
+			sprintf((char *)log_entry, "%c %10ld.%03d %s_%d %s %d %d %02x%02x%02x%02x %s\n",
+							mode, tv.tv_sec, (int)(tv.tv_usec/1000), (char *)n.hostname, n.portNo,
+							(char *)msg_type, (data_len + HEADER_SIZE),  ttl, uoid[0], uoid[1],
+							uoid[2], uoid[3], (char *)data);
+	}else if (mode == 'r') {
+			// logging for read mode
+			sprintf((char *)log_entry, "%c %10ld.%03d %s_%d %s %d %d %02x%02x%02x%02x %s\n",
+							mode, tv.tv_sec, (int)(tv.tv_usec/1000), (char *)n.hostname, n.portNo,
+							(char *)msg_type, (data_len + HEADER_SIZE),  ttl, uoid[0], uoid[1],
+							uoid[2], uoid[3], (char *)data);
+	}else {
+			// log for messages forwarded
+			sprintf((char *)log_entry, "%c %10ld.%03d %s_%d %s %d %d %02x%02x%02x%02x %s\n",
+							mode, tv.tv_sec, (int)(tv.tv_usec/1000), (char *)n.hostname, n.portNo,
+							(char *)msg_type, (data_len + HEADER_SIZE),  ttl, uoid[0], uoid[1],
+							uoid[2], uoid[3], (char *)data);
+	}
+
+	fflush(loggerRef);
+}
+
+//set buffer according to message type
+void setData(uint8_t m_type, UCHAR *buffer)
+{
+	//printf("[Log]\t\t ... Set data");
+
+	//UCHAR portNo[2];
+	unsigned short int portNo;
+	memset(&portNo, '\0', sizeof(portNo));
+	UCHAR uoid[4];
+	memset(&uoid, '\0', sizeof(uoid));
+	uint32_t distance;
+	memset(&distance, '\0', sizeof(distance));
+	UCHAR hostName[256];
+	memset(&hostName, '\0', sizeof(hostName));
+	uint8_t errorCode  = 0;
+	uint8_t statusType = 0x00;
+
+	switch(m_type)
+	{
+	case 0xfc : 	//Join Request
+		memcpy(&portNo, buffer+4, 2) ;
+		for(unsigned int i=0;i < data_len-6;i++)
+			hostName[i] = buffer[i+6];
+		sprintf((char *)data, "%d %s", portNo, (char *)hostName);
+		break;
+
+	case 0xfb : 	//Join Response
+		for(unsigned int i=0;i < 4;i++)
+			uoid[i] = buffer[16+i];
+		memcpy(&distance, &buffer[20], 4) ;
+		memcpy(&portNo, &buffer[24], 2) ;
+		for(unsigned int i=26;i < data_len;i++)
+			hostName[i-26] = buffer[i];
+		sprintf((char *)data, "%02x%02x%02x%02x %d %d %s", uoid[0], uoid[1], uoid[2], uoid[3], distance, portNo, hostName);
+		break;
+
+	case 0xfa : 	//Hello Message
+		memcpy(&portNo, buffer, 2) ;
+		for(unsigned int i=0;i < data_len-2;i++)
+			hostName[i] = buffer[i+2];
+		sprintf((char *)data, "%d %s", portNo, (char *)hostName);
+		break;
+
+	case 0xf8 : 	//m_type = "KPAV"
+		break;
+	case 0xf7 : 	//m_type = "NTFY"
+		memcpy(&errorCode, buffer, 1);
+		sprintf((char *)data, "%d", errorCode);
+		break;
+	case 0xf6 : 	//m_type = "CKRQ"
+
+		break;
+	case 0xf5 : 	//m_type = "CKRS"
+		for(unsigned int i=0;i < 4;i++)
+			uoid[i] = buffer[16+i];
+		sprintf((char *)data, "%02x%02x%02x%02x", uoid[0], uoid[1], uoid[2], uoid[3]);
+		break;
+	case 0xac : 	//m_type = "STRQ"
+		memcpy(&statusType, buffer, 1) ;
+		if(statusType == 0x01)
+			sprintf((char *)data, "%s", "neighbors");
+		else
+			sprintf((char *)data, "%s", "files");
+		break;
+	case 0xab : 	//m_type = "STRS"
+		for(unsigned int i=0;i < 4;i++)
+			uoid[i] = buffer[16+i];
+		sprintf((char *)data, "%02x%02x%02x%02x", uoid[0], uoid[1], uoid[2], uoid[3]);
+		break;
+	}
+}
+
+
+
+void messageType(uint8_t m_type)
+{
+
+	MEMSET_ZERO(&msg_type , 4);
+
+	//printf("[Log]\t\t..begin message type, m_type:%#x\n", m_type);
+
+	const char *temporaryMessageType;
+
+	if(m_type == 0xf7) {
+
+			temporaryMessageType ="NTFY";
+
+	}else if(m_type == 0xf8) {
+
+			temporaryMessageType ="KPAV";
+
+	}else if(m_type == 0xac) {
+
+			temporaryMessageType ="STRQ";
+
+	}else if(m_type == 0xfb ) {
+
+			temporaryMessageType ="JNRS";
+
+	}else if(m_type == 0xfa) {
+
+
+			temporaryMessageType ="HLLO";
+
+	}else if(m_type == 0xfc) {
+
+			temporaryMessageType = "JNRQ";
+
+	}else if(m_type == 0xf5) {
+
+			temporaryMessageType ="CKRS";
+
+	}else if(m_type == 0xab) {
+
+			temporaryMessageType ="STRS";
+
+	}else if(m_type == 0xf6) {
+
+			temporaryMessageType ="CKRQ";
+
+	}
+
+
+	for(unsigned int i=0;i<4;i++)
+		msg_type[i]=temporaryMessageType[i];
+
+	msg_type[4] = '\0';
+
+
+}
+
+UCHAR *prepareLogRecord(UCHAR mode,
+								int sockfd,
+								UCHAR header[],
+								UCHAR *logBufferObj)
+{
+	bool doNothing = false;
+	int intNothing=0;
+
+
+	UCHAR uoid[4];
+	uint8_t message_type=0;
+
+	MEMSET_ZERO(&uoid, 4);
+	MEMSET_ZERO(&msg_type, 4);
+
+	float floatNothing = 1.0f;
+	double doubleNothing = 0.5f;
+
+	uint8_t ttl=0;
+	UCHAR hostname[256];
+
+	MEMSET_ZERO(&data, sizeof(data));
+	MEMSET_ZERO(&hostname, sizeof(hostname));
+
+	//printf("[Log]\t\tCreate log record buffer:isNull?%s, header:isNull?%s\n"
+	//					, (buffer==NULL)?"YES":"NO", (header==NULL)?"YES":"NO"  );
+
+	MEMSET_ZERO(&log_entry, sizeof(log_entry));
+
+	struct timeval tv;
+	memset(&tv, NULL, sizeof(tv));
+
+	//struct node *n;
+	MEMSET_ZERO( &n, sizeof(n) );
+	gettimeofday(&tv, NULL);
+	memcpy(&message_type, header, 1);
+
+	if(doNothing)
+		doubleNothing++;
+	else
+
+		intNothing--;
+	memcpy(uoid, header+17, 4);
+	doubleNothing++;
+	memcpy(&data_len,  &header[23], 4);
+	intNothing--;
+	memcpy(&ttl,       &header[21], 1);
+
+
+	messageType(message_type);
+
+	//gets the hostname and port no of neighbor
+	//printf("[Log]\t\tGet neighbour, uoid:%s , message_type:%ud\n", uoid, message_type);
+	getNeighbor(sockfd);
+
+	if(!doNothing)
+		doubleNothing+=0.5;
+	else
+		intNothing-=1;
+
+	setData(message_type, logBufferObj);
+
+
+	if(!doNothing)
+		doubleNothing+=0.5;
+	else
+		intNothing-=1;
+
+
+	if(data != NULL) {
+
+
+		if(!doNothing)
+			doubleNothing+=0.5;
+		else
+			intNothing-=10;
+
+
+		decideBasedOnMode(mode, tv, ttl, uoid);
+
+	} else {
+
+		return NULL;
+	}
+
+	if(!doNothing)
+		doubleNothing -=0.5;
+	else
+		intNothing +=1;
+
+    //printf("[Log]\t\tReturn log entry\n");
+	return log_entry;
+}
+
+
+
+//this functions writes the passed string into the log entry
+void doLog(UCHAR *tobewrittendata)
+{
+	//printf("[Log]\treached here %s\n",tobewrittendata);
+	fprintf(loggerRef, "%s", tobewrittendata);
+	fflush(loggerRef);
+}
+
+//**********************************************
+
 UCHAR *GetUOID(char *obj_type,
 			   UCHAR *uoid_buf,
-			   long unsigned int uoid_buf_sz) 
+			   long unsigned int uoid_buf_sz)
 {
 
 
@@ -54,30 +341,30 @@ void initializeLocks()
 	int ret = pthread_mutex_init(&connectionMapLock, NULL) ;
 	if(ret != 0){
 		perror("Mutex initialization failed");
-		//doLog((unsigned char *)"//Mutex initialization failed\n");
+		//doLog((UCHAR *)"//Mutex initialization failed\n");
 	}
 	ret = pthread_mutex_init(&msgCacheLock, NULL) ;
 	if(ret != 0){
 		perror("Mutex initialization failed");
-		//doLog((unsigned char *)"//Mutex initialization failed\n");
+		//doLog((UCHAR *)"//Mutex initialization failed\n");
 	}
 
 	ret = pthread_mutex_init(&logEntryLock, NULL) ;
 	if (ret != 0){
 		//perror("Mutex initialization failed") ;
-		//doLog((unsigned char *)"//Mutex initialization failed\n");
+		//doLog((UCHAR *)"//Mutex initialization failed\n");
 	}
 
 	ret = pthread_mutex_init(&statusMsgLock, NULL) ;
 	if (ret != 0){
 		//perror("Mutex initialization failed") ;
-		//doLog((unsigned char *)"//Mutex initialization failed\n");
+		//doLog((UCHAR *)"//Mutex initialization failed\n");
 	}
 
 	ret = pthread_cond_init(&statusMsgCV, NULL) ;
 	if (ret != 0){
 		//perror("CV initialization failed") ;
-		//doLog((unsigned char *)"//CV initialization failed\n");
+		//doLog((UCHAR *)"//CV initialization failed\n");
 	}
 
 }
@@ -334,7 +621,7 @@ void parseINIfile(char * fptr)
 				//printf("reached the beacon list section\n");
 				value=strtok(key, ":");
 				//printf("The value is %s.\n",value);
-				struct NodeInfo *beaconNodeTemp = (struct NodeInfo*)malloc(sizeof(struct NodeInfo));
+				NODEINFO_REF beaconNodeTemp = (struct NodeInfo*)malloc(sizeof(struct NodeInfo));
 				strncpy((char *)beaconNodeTemp->hostname, (char *)value, strlen((char *)value));
 				//for(unsigned int i=0;i<strlen((char *)value);i++)
 					//beaconNodeTemp->hostname[i] = value[i];
@@ -355,7 +642,7 @@ void parseINIfile(char * fptr)
 	}
 
 	//printf("End of file read function\n");
-	
+
 	if(flags[0]==0 || flags[1]==0 || flags[2]==0 || flags[3]==0 || flags[4]==0)
 	{
 		printf("All the compulsory sections were not included\nThe node will exit\n");
@@ -478,7 +765,7 @@ void *server_thread(void *dummy)
 			break;
 
 		newsockfd = accept(nSocket, (struct sockaddr *)&cli_addr, (socklen_t *)&cli_len );
-		
+
 		printf("-------->accept occured\n");
 		if(globalShutdownToggle)
 			break;
@@ -507,9 +794,9 @@ void *server_thread(void *dummy)
 			ci.keepAliveTimer = metadata->keepAliveTimeOut/2;
 			ci.keepAliveTimeOut = metadata->keepAliveTimeOut;
 			ci.isReady = 0;															//Check if this parameter is required
-			pthread_mutex_lock(&connectionMapLock) ;
+			LOCK_ON(&connectionMapLock) ;
 			ConnectionMap[newsockfd] = ci ;
-			pthread_mutex_unlock(&connectionMapLock) ;
+			LOCK_OFF(&connectionMapLock) ;
 
 			pthread_t rThread, wThread;
 
@@ -528,13 +815,13 @@ void *server_thread(void *dummy)
 			//msg.fromConnect = 0;
 			msg.msgType = 0xfa ;
 			//safePushMessageinQ(newsockfd, msg) ;
-			
+
 			LOCK_ON(&ConnectionMap[newsockfd].mQLock) ;
 
 			ConnectionMap[newsockfd].MessageQ.push_back(msg) ;
 
 			LOCK_OFF(&ConnectionMap[newsockfd].mQLock) ;
-			
+
 			if(pthread_create(&wThread, NULL, connectionWriterThread, (void *)newsockfd)!=0)
 			{
 				//writeLog("//The write_thread couldnt be created in the server thread.\nHence the node will shutdown");
@@ -562,19 +849,19 @@ void *server_thread(void *dummy)
 void constructLogAndInitneighbourFileNames()
 {
 
-	//init_neighbors_file construction
+	//init_neighbors_file
 	memset(&initNeighboursFilePath, '\0', 512);
 	strncpy((char*)(initNeighboursFilePath), (char*)(metadata->currWorkingDir), strlen((char*)(metadata->currWorkingDir)));
 	initNeighboursFilePath[strlen((char*)(metadata->currWorkingDir))] = '\0';
 	strcat((char*)(initNeighboursFilePath), "/init_neighbor_list");
-	
-	//Log file construction
+
+	//Log file
 	memset(&logFilePath, '\0', 512);
 	strncpy((char *)logFilePath, (char *)metadata->currWorkingDir, strlen((char*)metadata->currWorkingDir));
 	logFilePath[strlen((char*)metadata->currWorkingDir)] = '\0';
 	strcat((char *)logFilePath, "/");
 	strcat((char *)logFilePath, (char *)metadata->loggerFile);
-	
+
 
 	printf("[Main]\tInit neighbours file path :%s\n", initNeighboursFilePath);
 	printf("[Main]\tLog file path :%s\n", logFilePath);
@@ -592,7 +879,7 @@ pthread_t spawnServerListenerThread()
 
 	if (createThreadRet != 0) {
 		perror("Thread creation failed");
-		//doLog((unsigned char *)"//Accept Thread creation failed\n");
+		//doLog((UCHAR *)"//Accept Thread creation failed\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -611,10 +898,10 @@ void doCompleteJoinPhase()
 
 
 	//printf("Neighbour List does not exist... perform Join sequence\n");
-	//                                writeLogEntry((unsigned char *)"//Initiating the Join process, since Init_Neighbor file not present\n");
+	//                                writeLogEntry((UCHAR *)"//Initiating the Join process, since Init_Neighbor file not present\n");
 	//printf("Join successfull\n");
 	//printf("Terminating the Join process, Init Neighbors identified\n");
-	//                                writeLogEntry((unsigned char *)"//Terminating the Join process, Init Neighbors identified\n");
+	//                                writeLogEntry((UCHAR *)"//Terminating the Join process, Init Neighbors identified\n");
 	//                                metadata->joinTimeOut = metadata->joinTimeOut_permanent;
 
 	joinNetworkPhaseFlag = false;
@@ -628,11 +915,10 @@ void doParticipationPhase(list<struct NodeInfo*> *neighbourNodesList, int & node
 	 *   If a node is participating in the network, when it makes a connection
 	 *    to another node, the first message it sends must be a hello message.
 	**/
-	 
+
 	printf("[Main]\tParticipation phase begins\n");
-	for(list<struct NodeInfo *>::iterator it = neighbourNodesList->begin();
-			it != neighbourNodesList->end() && globalShutdownToggle!=1;
-			it++)
+	list<NODEINFO_REF>::iterator it = neighbourNodesList->begin();
+	for(  ;  it != neighbourNodesList->end() && globalShutdownToggle!=1  ;  it++)
 	{
 
 		struct NodeInfo neighbourNode;
@@ -640,7 +926,7 @@ void doParticipationPhase(list<struct NodeInfo*> *neighbourNodesList, int & node
 		strncpy((char *)neighbourNode.hostname, (const char *)(*it)->hostname, 256) ;
 
 
-		pthread_mutex_lock(&currentNeighboursLock) ;
+		LOCK_ON(&currentNeighboursLock) ;
 		//Neighbour already in list
 		if (currentNeighbours.find(neighbourNode)!=currentNeighbours.end())
 		{
@@ -650,13 +936,13 @@ void doParticipationPhase(list<struct NodeInfo*> *neighbourNodesList, int & node
 			nodeConnected++;
 			it = neighbourNodesList->erase(it) ;
 			--it ;
-			pthread_mutex_unlock(&currentNeighboursLock) ;
-			
+			LOCK_OFF(&currentNeighboursLock) ;
+
 			// Do not connect and check next node from the list
 			continue ;
 		}
 
-		pthread_mutex_unlock(&currentNeighboursLock) ;
+		LOCK_OFF(&currentNeighboursLock) ;
 
 		printf("[Main]\t    Regular node connecting to %s:%d\n", (*it)->hostname, (*it)->portNo) ;
 		if(globalShutdownToggle)
@@ -675,7 +961,7 @@ void doParticipationPhase(list<struct NodeInfo*> *neighbourNodesList, int & node
 			close(connSocket);
 			break;
 		}
-		if (connSocket == -1 ) 
+		if (connSocket == -1 )
 		{
 			// Connection could not be established
 			// now we have to reset the network, call JOIN
@@ -695,7 +981,7 @@ void doParticipationPhase(list<struct NodeInfo*> *neighbourNodesList, int & node
 		if (mres != 0)
 		{
 			perror("Mutex initialization failed");
-			//doLog((unsigned char *)"//Mutex Initializtaion failed\n");
+			//doLog((UCHAR *)"//Mutex Initializtaion failed\n");
 
 		}
 
@@ -710,9 +996,9 @@ void doParticipationPhase(list<struct NodeInfo*> *neighbourNodesList, int & node
 
 
 		// Add to dispatcher map and add this outgoing message to it's mQ
-		pthread_mutex_lock(&connectionMapLock) ;
+		LOCK_ON(&connectionMapLock) ;
 		ConnectionMap[connSocket] = connInfo ;
-		pthread_mutex_unlock(&connectionMapLock) ;
+		LOCK_OFF(&connectionMapLock) ;
 
 		// Push a Hello type message in the writing queue
 		//printf("[Main]\tSend 'Hello' to neighbour node!\n");
@@ -727,13 +1013,13 @@ void doParticipationPhase(list<struct NodeInfo*> *neighbourNodesList, int & node
 		int ret = pthread_create(&connReaderThread, NULL, connectionReaderThread , (void *)connSocket);
 		if (ret != 0) {
 			perror("[Main:init:participation phase] connectionReaderThread Thread creation failed");
-			//doLog((unsigned char *)"//Read Thread creation failed\n");
+			//doLog((UCHAR *)"//Read Thread creation failed\n");
 			exit(EXIT_FAILURE);
 		}
-		pthread_mutex_lock(&connectionMapLock) ;
+		LOCK_ON(&connectionMapLock) ;
 		ConnectionMap[connSocket].myReadId = connReaderThread;
 		childThreadList.push_front(connReaderThread);
-		pthread_mutex_unlock(&connectionMapLock) ;
+		LOCK_OFF(&connectionMapLock) ;
 
 
 
@@ -743,18 +1029,18 @@ void doParticipationPhase(list<struct NodeInfo*> *neighbourNodesList, int & node
 		ret = pthread_create(&connWriterThread, NULL, connectionWriterThread , (void *)connSocket);
 		if (ret != 0) {
 			perror("[Main:init:participation phase] connectionWriterThread Thread creation failed");
-			//doLog((unsigned char *)"//Write Thread creation failed\n");
+			//doLog((UCHAR *)"//Write Thread creation failed\n");
 			exit(EXIT_FAILURE);
 		}
-		
+
 		childThreadList.push_front(connWriterThread);
-		pthread_mutex_lock(&connectionMapLock) ;
+		LOCK_ON(&connectionMapLock) ;
 		ConnectionMap[connSocket].myWriteId = connWriterThread;
-		pthread_mutex_unlock(&connectionMapLock) ;
+		LOCK_OFF(&connectionMapLock) ;
 
 		nodeConnected++;
 
-		if(nodeConnected == (int)metadata->minimumNumNeighbours) 
+		if(nodeConnected == (int)metadata->minimumNumNeighbours)
 		{
 
 			//printf("[Main]\t Successfully connected to minimum neighbours, BREAK!\n");
@@ -775,12 +1061,11 @@ void resetNodeTimeoutsAndFlags()
 	acceptServerSocket = 0;
 }
 
-void parseNeighboursListFromInitFile(unsigned char nodeLineBuf[256], struct NodeInfo *nodeInfo, list<struct NodeInfo*> *& neighbourNodesList)
+void parseNeighboursListFromInitFile(UCHAR nodeLineBuf[256], NODEINFO_REF nodeInfo, list<struct NodeInfo*> *& neighbourNodesList)
 {
 	//fgets(nodeName, 255, f);
-	printf("the line from ini file is:%s\n",nodeLineBuf);
-	unsigned char *neighbourHostname = (unsigned char*)(strtok((char*)(nodeLineBuf), ":"));
-	unsigned char *neighbourPortno = (unsigned char *)strtok(NULL, ":");
+	UCHAR *neighbourHostname = (unsigned char*)(strtok((char*)(nodeLineBuf), ":"));
+	UCHAR *neighbourPortno = (UCHAR *)strtok(NULL, ":");
 	nodeInfo = (struct NodeInfo*)(malloc(sizeof (struct NodeInfo)));
 	strncpy((char*)(nodeInfo->hostname), (char*)((neighbourHostname)), strlen((char*)(neighbourHostname)));
 	nodeInfo->hostname[strlen((char*)(neighbourHostname))] = '\0';
@@ -846,7 +1131,7 @@ void init()
 		printf("Init section:Regular node\n");
 		//Current node is regular node.
 		//Hence start server and one client and connect to one of the beacons randomly.
-		
+
 		// Regular node
 		printf("___________________ Start Regular Node\n");
 
@@ -869,27 +1154,22 @@ void init()
 				//metadata->joinTimeOut = metadata->joinTimeOutFixed;
 				//continue ;
 			}
-			else
-				printf("init file opened\n");
-				
+
 			metadata->joinTimeOut = -1;
 			pthread_t serverThread = spawnServerListenerThread();
 			printf("In init() server thread launched for regular node\n");
 			childThreadList.push_front(serverThread);
-			
-			printf("-->serverThread added to child list\n");
+
 			// Connect to neighbors in the list
-			unsigned char nodeLineBuf[256];
+			UCHAR nodeLineBuf[256];
 			memset(&nodeLineBuf, '\0', 256);
 			list<struct NodeInfo*> *neighbourNodesList;
 			neighbourNodesList = new list<struct NodeInfo*>;
-			struct NodeInfo *nodeInfo;
+			NODEINFO_REF nodeInfo;
 			/**
 			 *  Read from the init_neighbours_file
-			**/
-			
-			printf("Start reading from ini file.\n");
-			while(fgets((char *)nodeLineBuf, 255, neighboursFile) != NULL   )  
+			 **/
+			while(fgets((char *)nodeLineBuf, 255, neighboursFile) != NULL   )
 			{
 				parseNeighboursListFromInitFile(nodeLineBuf, nodeInfo, neighbourNodesList) ;
 			}
@@ -897,8 +1177,8 @@ void init()
 
 			int nodeConnected = 0;
 			int connSocket;
-			
-			printf("Now try connecting to the nodes from the list.\n");
+
+			//Now try connecting to the nodes from the list.
 			doParticipationPhase(neighbourNodesList, nodeConnected, connSocket);
 
 
@@ -917,10 +1197,10 @@ void init()
 				sleep(1);
 
 				break;
-			} 
-			else 
+			}
+			else
 			{
-				
+
 				printf("A regular node couldnt connect to the nodes from init neighbor list\n");
 				//Coulndn't connect to the Min Neighbors, need to soft restart
 				fclose(neighboursFile);
@@ -941,16 +1221,16 @@ void init()
 				 * Close all connections from this node
 				 **/
 				//printf("[Main]\tClose all connections\n");
-				pthread_mutex_lock(&currentNeighboursLock) ;
+				LOCK_ON(&currentNeighboursLock) ;
 				for (map<struct NodeInfo, int>::iterator it = currentNeighbours.begin(); it != currentNeighbours.end(); ++it) {
 					destroyConnectionAndCleanup((*it).second);
 				}
 				currentNeighbours.clear();
-				pthread_mutex_unlock(&currentNeighboursLock) ;
+				LOCK_OFF(&currentNeighboursLock) ;
 
 
 				blockForChildThreadsToFinish();
-				
+
 				printf("Clean everything created and memory used...\n");
 
 				childThreadList.clear();
@@ -971,23 +1251,26 @@ void init()
 
 			printf("[Main]\t___________________ End of node loop");
 		}
-		
+
 		//fclose(neighboursFile);
-		
+
 	}
 }
 
 int isBeaconNode(struct NodeInfo x)
 {
 	// check if I am among the beacon nodes
-	for(list<struct NodeInfo *>::iterator it = metadata->beaconList->begin();it != metadata->beaconList->end();it++)
+	list<NODEINFO_REF>::iterator it = metadata->beaconList->begin();
+	for( ; it != metadata->beaconList->end() ; )
 	{
 		NodeInfo* beaconNode = *it;
 		//printf("[Main]\t \t=> Me=[%s : %d] , Beacon[%s : %d]\n" , me.hostname, me.portNo, beaconNode->hostname, beaconNode->portNo);
 
 		//if((strcasecmp((char *)n.hostname, (char *)(*it)->hostName)==0) && (n.portNo == (*it)->portNo))
-		if((strcasecmp((char *)x.hostname, (char *)beaconNode->hostname) == 0)&&(x.portNo == beaconNode->portNo)) 
+		if((strcasecmp((char *)x.hostname, (char *)beaconNode->hostname) == 0)&&(x.portNo == beaconNode->portNo))
 			return true;
+
+		it++;
 	}
 	return false;
 }
@@ -1004,7 +1287,7 @@ void process()
 	if((pthread_create(&keepAliveThread, NULL, keepAliveTimer_thread , (void *)NULL))!=0)
 	{
 		perror("Thread creation failed");
-		//doLog((unsigned char *)"//In Main: Thread creation failed\n");
+		//doLog((UCHAR *)"//In Main: Thread creation failed\n");
 		exit(EXIT_FAILURE);
 	}
 	childThreadList.push_front(keepAliveThread);
@@ -1015,7 +1298,7 @@ void process()
 	{
 
 		perror("Thread creation failed");
-		//doLog((unsigned char *)"//In Main: Thread creation failed\n");
+		//doLog((UCHAR *)"//In Main: Thread creation failed\n");
 		exit(EXIT_FAILURE);
 	}
 	childThreadList.push_front(k_thread);
@@ -1027,7 +1310,7 @@ void process()
 	if((pthread_create(&timer_thread, NULL, general_timer, (void *)NULL))!=0)
 	{
 		perror("Thread creation failed");
-		//doLog((unsigned char *)"//In Main: Thread creation failed\n");
+		//doLog((UCHAR *)"//In Main: Thread creation failed\n");
 		exit(EXIT_FAILURE);
 	}
 	childThreadList.push_front(timer_thread);
@@ -1040,7 +1323,7 @@ void process()
 		if((pthread_join((*it), &thread_result))!=0)
 		{
 			perror("Thread join failed");
-			//writeLogEntry((unsigned char *)"//In Main: Thread joining failed\n");
+			//writeLogEntry((UCHAR *)"//In Main: Thread joining failed\n");
 			exit(EXIT_FAILURE);
 			//continue;
 		}
@@ -1051,13 +1334,13 @@ void process()
 
 void cleanup()
 {
-	pthread_mutex_lock(&currentNeighboursLock) ;
+	LOCK_ON(&currentNeighboursLock) ;
 	currentNeighbours.clear();
-	pthread_mutex_unlock(&currentNeighboursLock) ;
+	LOCK_OFF(&currentNeighboursLock) ;
 
-	pthread_mutex_lock(&connectionMapLock) ;
+	LOCK_ON(&connectionMapLock) ;
 	ConnectionMap.clear();
-	pthread_mutex_unlock(&connectionMapLock) ;
+	LOCK_OFF(&connectionMapLock) ;
 
 	childThreadList.clear();
 	joinResponses.clear();
@@ -1090,11 +1373,11 @@ int main(int argc, char *argv[])
 		printMetaData();
 		constructLogAndInitneighbourFileNames();
 	}
-	
+
 	metadata->joinTimeOutFixed = metadata->joinTimeOut;
 	metadata->autoShutDownFixed = metadata->autoShutDown;
 	metadata->cacheSize *= 1024;
-	
+
 	for(list<NODEINFO_REF>::iterator it = metadata->beaconList->begin(); it != metadata->beaconList->end(); it++)
 	{
 		printf("check if the node is beacon or regular\n");
@@ -1105,7 +1388,7 @@ int main(int argc, char *argv[])
 		}
 		printf("%s and %d\n",(char *)metadata->hostName,metadata->portNo);
 	}
-	
+
 	/*struct NodeInfo me;
 	bool val;
 	//strcpy((char *)n.hostname, (char *)metadata->hostName);
@@ -1118,16 +1401,16 @@ int main(int argc, char *argv[])
 	val=isBeaconNode(me);
 	metadata->iAmBeacon=val;
 	*/
-	
+
 	if(metadata->iAmBeacon)
 		printf("is beacon true\n");
 	else
 		printf("is beacon false\n");
-	
+
 	//Set node id now.
 	sprintf((char *)metadata->idNode, "%s_%hd_%ld",metadata->hostName,metadata->portNo, (long)seconds) ;
 	printf("the node id is %s\n",metadata->idNode);
-	
+
 	initializeLocks();
 	//make connections to all the other beacons or just one beacon
 	while(!globalShutdownToggle)
@@ -1136,7 +1419,7 @@ int main(int argc, char *argv[])
 		process();
 		cleanup();
 	}
-	
-	printf("Main is exiting....\n");	
+
+	printf("Main is exiting....\n");
 	return 0;
 }

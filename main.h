@@ -145,7 +145,7 @@ struct Message{
         bool fromConnect ;                                                      // 1 - The message was created by the node which 
                                                                                 // initiated the connection
         int dataLen ;
-        uint8_t status_type ;
+        uint8_t statusType ;
         uint8_t errorCode;
 };
 
@@ -266,4 +266,3 @@ extern void blockForChildThreadsToFinish();
 extern int isBeaconNode(struct NodeInfo me);
 extern void floodStatusRequestsIntoNetwork();
 extern void doLog(UCHAR *tobewrittendata);
-

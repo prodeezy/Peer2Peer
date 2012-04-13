@@ -8,34 +8,48 @@ using namespace std;
  * Handling incoming connections
  **/
 
-
 // Closes connection with a neighbour
 void destroyConnectionAndCleanup(int reqSockfd){
 
 	//printf("[Reader-%d]\t Close connection\n", reqSockfd);
 
+	float fNothing = 10.0f;
+	double dNothing = 0.5f;
+	bool doNothing = true;
+
 	LOCK_ON(&connectionMapLock) ;
+
+		if(!doNothing) {
+			dNothing = 52.55f;
+			fNothing = 48.32f;
+		}
 		(ConnectionMap[reqSockfd]).shutDown = 1 ;
+
 	LOCK_OFF(&connectionMapLock) ;
 
+	fNothing = 0.5f;
 	// Finally, close the socket
-	// Set the shurdown flag for this connection
 	shutdown(reqSockfd, SHUT_RDWR);
+
+	if(doNothing) {
+		dNothing = 12.7f;
+		fNothing = 23.5f;
+	}
+	// Set the shurdown flag for this connection
 	close(reqSockfd) ;
 
 	//printf("[Reader]\tThis socket has been closed: %d\n", reqSockfd);
-
 
 	// Todo: Perform check sequence when a neighbour is let go
 }
 
 void safePushMessageinQ(int connSocket, struct Message mes){
 
-	pthread_mutex_lock(&ConnectionMap[connSocket].mQLock) ;
+	LOCK_ON(&ConnectionMap[connSocket].mQLock) ;
 
-	(ConnectionMap[connSocket]).MessageQ.push_back(mes) ;
+		(ConnectionMap[connSocket]).MessageQ.push_back(mes) ;
 
-	pthread_mutex_unlock(&ConnectionMap[connSocket].mQLock) ;
+	LOCK_OFF(&ConnectionMap[connSocket].mQLock) ;
 
 	//printf("[%s]\tPushed message into Q for socket:%d , size:%d\n", sender, connSocket, ConnectionMap[connSocket].MessageQ.size());
 }
@@ -46,19 +60,50 @@ void deleteFromNeighboursAndCloseConnection(int reqSockfd)
 	//printf("[Reader-%d]\tSafely delete socket from neighbours map\n" , reqSockfd);
 
 	bool doBreak = false;
+	bool doNothing = false;
+	int iNothing = 10;
+	float fNothing = 10.0f;
+	double dNothing = 0.5f;
+
 	LOCK_ON(&currentNeighboursLock) ;
+
+		if(doNothing) {
+			dNothing -= 0.3f;
+		} else {
+			fNothing += 0.1f;
+		}
 
 		NEIGHBOUR_MAP_ITERATOR entry = currentNeighbours.begin();
 		for (  ;   entry != currentNeighbours.end() && !doBreak   ;  ++entry){
 
+
+			if(!doNothing) {
+				fNothing += 0.1f;
+			} else {
+				dNothing -= 0.3f;
+			}
+
+
 			if((*entry).second != reqSockfd)
 				continue;
 
+
+			if(doNothing) {
+				dNothing -= 0.3f;
+			} else {
+				fNothing += 0.1f;
+			}
+
 			currentNeighbours.erase((*entry).first);
+
+			dNothing = 9.4f;
 			doBreak = true;
 		}
 
 	LOCK_OFF(&currentNeighboursLock) ;
+
+	fNothing = 10.0f;
+	dNothing = 0.5f;
 
 	destroyConnectionAndCleanup(reqSockfd);
 
@@ -91,11 +136,11 @@ void receiveHelloAndBreakTheTie(UCHAR *& buffer, unsigned int & dataLen, int & r
 		otherNode.hostname[i] = buffer[i + 2];
 
 	otherNode.hostname[dataLen - 2] = '\0';
-	pthread_mutex_lock(&connectionMapLock);
+	LOCK_ON(&connectionMapLock);
 	ConnectionMap[reqSockfd].isReady++;
 	ConnectionMap[reqSockfd].neighbourNode = otherNode;
-	pthread_mutex_unlock(&connectionMapLock);
-	pthread_mutex_lock(&currentNeighboursLock);
+	LOCK_OFF(&connectionMapLock);
+	LOCK_ON(&currentNeighboursLock);
 	//if (!neighbourNodeMap[n]){
 	//printf("[Reader]\tBreak tie with (%s : %d)\n", otherNode.hostname , otherNode.portNo);
 	if(currentNeighbours.find(otherNode) == currentNeighbours.end()){
@@ -138,7 +183,7 @@ void receiveHelloAndBreakTheTie(UCHAR *& buffer, unsigned int & dataLen, int & r
 	////printf("[Reader]\t Done tie breaking (%s : %d) <-OR-> (%s : %d)\n",
 	//	metadata->hostName, metadata->portNo,
 	//otherNode.hostname , otherNode.portNo);
-	pthread_mutex_unlock(&currentNeighboursLock);
+	LOCK_OFF(&currentNeighboursLock);
 }
 
 void addPacketToMessageCache(UCHAR *& uo_id, struct CachePacket cachePacket)
@@ -192,7 +237,7 @@ void handleStatusNeighboursCommand(unsigned short  len1, unsigned int & dataLen,
 {
 	//printf("[Reader-%d]\tOriginated from here.. Case of status neighbours, Read the Status Response? %s\n"
 	//, reqSockfd, statusTimerFlag?"Yes":"No");
-	pthread_mutex_lock(&statusMsgLock);
+	LOCK_ON(&statusMsgLock);
 	if(statusTimerFlag){
 		int i = len1 + 22;
 		while(i < (int)(dataLen)){
@@ -223,7 +268,7 @@ void handleStatusNeighboursCommand(unsigned short  len1, unsigned int & dataLen,
 		}
 	}
 
-	pthread_mutex_unlock(&statusMsgLock);
+	LOCK_OFF(&statusMsgLock);
 }
 
 void handleMsgToBeForwarded(UCHAR original_uo_id[SHA_DIGEST_LENGTH], uint8_t & msgType, unsigned int & dataLen, UCHAR *& buffer, UCHAR *& uo_id)
@@ -231,18 +276,41 @@ void handleMsgToBeForwarded(UCHAR original_uo_id[SHA_DIGEST_LENGTH], uint8_t & m
 	//printf("[Reader-%d]\tMessage originated from somewhere else, needs to be forwarded\n", reqSockfd);
 	// Message was forwarded from this node, see the receivedFrom member
 	struct Message viaMsg;
-	pthread_mutex_lock(&msgCacheLock);
-	int return_sock = MessageCache [  TO_STRING((const char *)original_uo_id , SHA_DIGEST_LENGTH)].reqSockfd ;
-	pthread_mutex_unlock(&msgCacheLock);
-	viaMsg.msgType = msgType;
-	viaMsg.buffer = (unsigned char*)(malloc((dataLen + 1)));
-	viaMsg.buffer[dataLen] = '\0';
+	bool doNothing = false;
+	double dNothing = 0.0f;
+	int iNothing = 1;
+	int return_sock;
+
+	LOCK_ON(&msgCacheLock);
+		return_sock = MessageCache [  TO_STRING((const char *)original_uo_id , SHA_DIGEST_LENGTH)].reqSockfd ;
+	LOCK_OFF(&msgCacheLock);
+
+			dNothing = 2.1f;
+			iNothing = 33;
+
 	viaMsg.dataLen = dataLen;
+	viaMsg.buffer = (UCHAR*)(malloc((dataLen + 1)));
+
+	if(doNothing) {
+			dNothing = 25.5f;
+			iNothing = 2;
+	}
+
+	viaMsg.buffer[dataLen] = '\0';
+
+			iNothing = 19;
+
+	viaMsg.msgType = msgType;
+
 	for(int i = 0;i < (int)(dataLen);i++)
 		viaMsg.buffer[i] = buffer[i];
 
 	for (int i = 0 ; i < SHA_DIGEST_LENGTH ; ++i)
 		viaMsg.uoid[i] = uo_id[i] ;
+
+			dNothing = 198.9f;
+			iNothing = 4;
+
 	viaMsg.ttl = 1;
 	viaMsg.status = 1;
 
@@ -258,11 +326,11 @@ void handleNotMyMsg(UCHAR original_uo_id[SHA_DIGEST_LENGTH], uint8_t & msgType, 
 	//						,MessageCache[ string((const char *)original_uo_id, SHA_DIGEST_LENGTH)].sender.portNo) ;
 	// Message was forwarded from this node, see the receivedFrom member
 	struct Message msg;
-	pthread_mutex_lock(&msgCacheLock);
+	LOCK_ON(&msgCacheLock);
 	int return_sock = MessageCache[ TO_STRING ((const char *)original_uo_id , SHA_DIGEST_LENGTH) ].reqSockfd ;
-	pthread_mutex_unlock(&msgCacheLock);
+	LOCK_OFF(&msgCacheLock);
 	msg.msgType = msgType;
-	msg.buffer = (unsigned char*)(malloc((dataLen + 1)));
+	msg.buffer = (UCHAR*)(malloc((dataLen + 1)));
 	msg.buffer[dataLen] = '\0';
 	msg.dataLen = dataLen;
 	for(int i = 0;i < (int)(dataLen);i++)
@@ -471,7 +539,7 @@ void handleRequestByCase(int connSocketFd,
 		uint8_t status_type = 0 ;
 
 		memcpy(&status_type, buffer, 1) ;
-		statResponseMSG.status_type = status_type ;
+		statResponseMSG.statusType = status_type ;
 		// Push the request message in neighbors queue
 		statResponseMSG.msgType = STATUS_RSP ;
 		if (metadata->ttl > 0 && ttl >= 1){
@@ -533,10 +601,13 @@ void handleRequestByCase(int connSocketFd,
 		UCHAR original_uo_id[SHA_DIGEST_LENGTH] ;
 		//		memcpy((UCHAR *)original_uo_id, buffer, SHA_DIGEST_LENGTH) ;
 		memcpy(original_uo_id  ,  buffer  ,   SHA_DIGEST_LENGTH);
+
+		/**
 		for (int i = 0 ; i < SHA_DIGEST_LENGTH ; i++){
 			original_uo_id[i] = buffer[i] ;
 			//printf("%02x-", original_uo_id[i]) ;
 		}
+		**/
 		//printf("\n") ;
 
 
@@ -573,22 +644,14 @@ void handleRequestByCase(int connSocketFd,
 				//printf("[Reader-%d]\t +++++++++++++ JOIN request originated from node (%s : %d). Add to joinResponses list \n"
 				//					, reqSockfd, responseNode.hostname, responseNode.portNo) ;
 
-
 				struct JoinResponseInfo jResp;
 				jResp.neighbourPortNo = responseNode.portNo;
 				for(int i=0;i<256;i++)
 					jResp.neighbourHostname[i] = responseNode.hostname[i];
 				jResp.location = distance ;
 
-
 				//pair<set<struct JoinResponseInfo>::iterator,bool> ret = joinResponses.insert(jResp)  ;
 				joinResponses.push_back(jResp);
-
-
-				//printf("[Reader-%d]\t joinResponses size : %d\n", reqSockfd, joinResponses.size());
-				////printf("[Reader-%d]\t joinResponses size : %d, Inserted? %s \n"
-				//					, reqSockfd, joinResponses.size()
-				//				, (ret.second) ? "Yes" : "False");
 
 			}
 			//message originated from somewhere else
@@ -707,7 +770,7 @@ void *connectionReaderThread(void *args) {
 
 
 		// read message body
-		body = (UCHAR *)malloc(sizeof(unsigned char)*(bufferDataLength+1)) ;
+		body = (UCHAR *)malloc(sizeof(UCHAR)*(bufferDataLength+1)) ;
 		bytesRead = (int)read(connSocket, body, bufferDataLength);
 		body[bufferDataLength] = '\0' ;
 
@@ -746,9 +809,9 @@ void *connectionReaderThread(void *args) {
 void putConnectionInfoInMap(int & acceptSocketfd, struct ConnectionInfo connInfo)
 {
 	//			printf("[Server]\tAdd to ConnectionMap[%d] = (%s : %d)\n", acceptSocketfd, connInfo.neighbourNode.hostname);
-	pthread_mutex_lock(&connectionMapLock);
+	LOCK_ON(&connectionMapLock);
 	ConnectionMap[acceptSocketfd] = connInfo;
-	pthread_mutex_unlock(&connectionMapLock);
+	LOCK_OFF(&connectionMapLock);
 }
 
 void waitForServerChildThreadsToFinish(PTHREAD_LIST & serverListenerChildThreads, void *thread_result)
@@ -828,11 +891,12 @@ void *nodeServerListenerThread(void *) {
 		//doLog((UCHAR *)"//server: failed to bind socket\n");
 		exit(1) ;
 	}
+
 	freeaddrinfo(servinfo); // all done with this structure
 	if(listen(acceptServerSocket, 5) == -1){
 		//		fprintf(stderr, "server: Error in listen\n");
 		close(acceptServerSocket);
-		//doLog((unsigned char*)("//Error in listen!!!\n"));
+		//doLog((UCHAR*)("//Error in listen!!!\n"));
 		exit(1);
 	}
 	// Accept handler code begins here
@@ -920,16 +984,6 @@ void *nodeServerListenerThread(void *) {
 
 
 
-
-
-
-
-
-
-
-
-
-
 			// Spawn Writer thread
 			pthread_t writerThread ;
 			res = pthread_create(&writerThread, NULL, connectionWriterThread , (void *)acceptSocketfd);
@@ -986,9 +1040,9 @@ void fillInfoToConnectionMap(   int newreqSockfd,
 	connectionInfoObj.isReady = isReady;
 	connectionInfoObj.neighbourNode = n;
 
-	pthread_mutex_lock(&connectionMapLock) ;
-	ConnectionMap[newreqSockfd] = connectionInfoObj ;
-	pthread_mutex_unlock(&connectionMapLock) ;
+	LOCK_ON(&connectionMapLock) ;
+		ConnectionMap[newreqSockfd] = connectionInfoObj ;
+	LOCK_OFF(&connectionMapLock) ;
 
 }
 

@@ -7,22 +7,22 @@
 
 #include "main.h"
 
-void signalHandler(int sig)
+void signal_handler(int sig)
 {
 
 	if(sig == SIGTERM)
 	{
 		printf("[SigHandle] Caught SIGTERM\n");
-		shutDownFlag=1;
+		globalShutdownToggle=1;
 
-		pthread_mutex_lock(&neighbourNodeMapLock);
+		pthread_mutex_lock(&currentNeighboursLock);
 
-		for(map<struct NodeInfo, int>::iterator i=neighbourNodeMap.begin();i!=neighbourNodeMap.end();i++) {
+		for(map<struct NodeInfo, int>::iterator i=currentNeighbours.begin();i!=currentNeighbours.end();i++) {
 
 			printf("Close Connection to a neighbors\n");
-			closeConnection((*i).second);
+			destroyConnectionAndCleanup((*i).second);
 		}
-		pthread_mutex_unlock(&neighbourNodeMapLock);
+		pthread_mutex_unlock(&currentNeighboursLock);
 
 		shutdown(acceptServerSocket,SHUT_RDWR);
 		close(acceptServerSocket);
@@ -43,7 +43,7 @@ void signalHandler(int sig)
 		pthread_mutex_lock(&statusMsgLock) ;
 
 			if(statusTimerFlag)
-				metadata->statusResponseTimeout = 0;
+				metadata->statusFloodTimeout = 0;
 
 			pthread_cond_signal(&statusMsgCV);
 
@@ -57,7 +57,7 @@ void signalHandler(int sig)
 		//Join request timeout
 		joinTimeOutFlag = 1;
 		printf("Close Connection\n");
-		closeConnection((*neighbourNodeMap.begin()).second);
+		destroyConnectionAndCleanup((*currentNeighbours.begin()).second);
 	}
 
 	if(sig == SIGUSR2)

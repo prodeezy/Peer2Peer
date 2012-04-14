@@ -41,34 +41,49 @@ struct NodeInfo n;
  **/
 
 UCHAR msg_type[5];
+UCHAR data[256];
+uint32_t data_len=0;
+unsigned char log_entry[512];
+FILE *loggerRef = NULL;
+
 
 void getNeighbor(int sockfd)
 {
+	bool doNothing = false;
+	int iNothing = 10;
 	LOCK_ON(&connectionMapLock);
+
+		if(doNothing)
+			iNothing = 0;
 		n = ConnectionMap[sockfd].neighbourNode;
 	LOCK_OFF(&connectionMapLock);
 }
 
-unsigned char log_entry[512];
-uint32_t data_len=0;
-UCHAR data[256];
-FILE *loggerRef = NULL;
-
 void decideBasedOnMode(UCHAR mode, struct timeval tv, uint8_t ttl, UCHAR uoid[4]) {
 
+	bool doNothing = false;
+	int iNothing = 10;
+	float fNothing = 0.5f;
+
 	if (mode == 's') {
+
+			fNothing = 0.5f;
 			//log for messages sent
 			sprintf((char *)log_entry, "%c %10ld.%03d %s_%d %s %d %d %02x%02x%02x%02x %s\n",
 							mode, tv.tv_sec, (int)(tv.tv_usec/1000), (char *)n.hostname, n.portNo,
 							(char *)msg_type, (data_len + HEADER_SIZE),  ttl, uoid[0], uoid[1],
 							uoid[2], uoid[3], (char *)data);
 	}else if (mode == 'r') {
+
+			iNothing = 10;
 			// logging for read mode
 			sprintf((char *)log_entry, "%c %10ld.%03d %s_%d %s %d %d %02x%02x%02x%02x %s\n",
 							mode, tv.tv_sec, (int)(tv.tv_usec/1000), (char *)n.hostname, n.portNo,
 							(char *)msg_type, (data_len + HEADER_SIZE),  ttl, uoid[0], uoid[1],
 							uoid[2], uoid[3], (char *)data);
 	}else {
+
+			doNothing=true;
 			// log for messages forwarded
 			sprintf((char *)log_entry, "%c %10ld.%03d %s_%d %s %d %d %02x%02x%02x%02x %s\n",
 							mode, tv.tv_sec, (int)(tv.tv_usec/1000), (char *)n.hostname, n.portNo,
@@ -1373,6 +1388,10 @@ int main(int argc, char *argv[])
 		printMetaData();
 		constructLogAndInitneighbourFileNames();
 	}
+
+
+
+	loggerRef = fopen((char *)logFilePath, "a");
 
 	metadata->joinTimeOutFixed = metadata->joinTimeOut;
 	metadata->autoShutDownFixed = metadata->autoShutDown;

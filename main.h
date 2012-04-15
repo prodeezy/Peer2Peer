@@ -8,7 +8,8 @@
 #include <sys/socket.h>
 #include <signal.h>
 #include <list>
-#include <openssl/sha.h>
+#include <sys/time.h>
+//#include <openssl/sha.h>
 #include <stdlib.h>
 #include <string.h>
 #include <netdb.h>
@@ -24,6 +25,7 @@
 #include <ctype.h>
 #include <map>
 
+
 #define HEADER_SIZE 								27
 #define SHA_DIGEST_LENGTH 							20
 
@@ -37,7 +39,9 @@
 #define DEFAULT 	0x00
 #define STATUS_REQ	0xAC
 #define STATUS_RSP	0xAB
-
+#define STORE_REQ	0xCC
+#define GET_REQ		0xDC
+#define GET_RESP	0xDB
 
 
 using namespace std ;
@@ -64,13 +68,25 @@ typedef list<struct JoinResponseInfo>					JOINRESPINFO_LIST;
  * Message structure that goes into the messgae queues
  */
 
+struct FileMetadata {
+
+	list<string> keywords;
+	UCHAR bitVector[128];
+	UCHAR fName[256];
+	UINT fSize;
+	UINT fileNumber;
+	UCHAR NONCE[20];
+	UCHAR SHA1[20];
+
+};
+
 struct MetaData
 {
 		UCHAR currWorkingDir[512];
 		UINT autoShutDown;
 		UCHAR loggerFile[256];
 
-        UINT getMsgLifeTime;
+        UINT msgLifeTime;
         UINT lifeTimeOfMsg;
         UINT autoShutDownFixed;
         uint8_t status_ttl ;
@@ -136,13 +152,18 @@ struct CachePacket {
 
 struct Message{
 
+		UCHAR *metadata;
         uint8_t msgType;
+        UCHAR fileName[256];
+        uint32_t fileNameLength;
+        uint32_t metadatLen;
+
         UCHAR *buffer ;
         uint8_t ttl ;
         uint32_t distance ;
         int status ;                                                            // 0 - originated from here
         UCHAR uoid[SHA_DIGEST_LENGTH] ;
-        bool fromConnect ;                                                      // 1 - The message was created by the node which 
+        bool fromConnect ;                                                      // 1 - The message was created by the node which
                                                                                 // initiated the connection
         int dataLen ;
         uint8_t statusType ;
@@ -227,13 +248,13 @@ extern int joinTimeOutFlag;
 extern int makeTCPPipe(UCHAR *hostName, UINT portNum );
 extern void performJoinNetworkPhase() ;
 extern void safePushMessageinQ(int, struct Message ) ;
-extern void fillInfoToConnectionMap(   int newreqSockfd,
-								int shutDown ,
-								UINT keepAliveTimer ,
-								int keepAliveTimeOut ,
-								int isReady ,
-								bool joinFlag,
-								NodeInfo n) ;
+extern void fillInfoToConnectionMap(   	int newreqSockfd,
+										int shutDown ,
+										UINT keepAliveTimer ,
+										int keepAliveTimeOut ,
+										int isReady ,
+										bool joinFlag,
+										NodeInfo n) ;
 
 
 

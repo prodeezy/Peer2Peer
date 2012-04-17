@@ -753,6 +753,7 @@ void handleRequestByCase(int connSocketFd,
 
 				//TODO:write file to cache
 
+
 				//send to neighbours
 				LOCK_ON(&currentNeighboursLock);
 
@@ -765,7 +766,6 @@ void handleRequestByCase(int connSocketFd,
 
 						// set file name
 						int tmpFNameLength = strlen(tempFileName);
-						storeMessage.fileName= (UCHAR *)malloc(tmpFNameLength + 1);
 						strncpy((char *)storeMessage.fileName , tempFileName, tmpFNameLength);
 						storeMessage.fileName[ tmpFNameLength ] = '\0';
 
@@ -916,9 +916,9 @@ void *connectionReaderThread(void *args) {
 			printf("[Reader] Store ... metadata len:%d", metadataLen);
 
 			// read metadata
-			buffer = malloc(sizeof(UCHAR) * (metadataLen+1));
-			retCode = read(connSocket, buffer, metadataLen);
-			buffer[metadataLen] = '\0';
+			body = (UCHAR *)malloc(sizeof(UCHAR) * (metadataLen+1));
+			retCode = read(connSocket, body, metadataLen);
+			body[metadataLen] = '\0';
 
 			// create file to store content
 			char fNameSuffix[L_tmpnam];// = "1.data";
@@ -932,7 +932,7 @@ void *connectionReaderThread(void *args) {
 			int bytesToBeRead = bufferDataLength - metadataLen - 24;
 			UCHAR dataChunk[8192];
 			int totalBytesRead = 0;
-			File* tempDataFile = fopen(tempFileName , "wb");
+			FILE* tempDataFile = fopen(tempFileName , "wb");
 
 			for ( ; totalBytesRead < bytesToBeRead ; ) {
 
@@ -979,7 +979,7 @@ void *connectionReaderThread(void *args) {
 							ttl,
 							body,
 							bufferDataLength,
-							tempFileName[256]);
+							tempFileName);
 
 		// Todo: Log message received unless it's hello
 

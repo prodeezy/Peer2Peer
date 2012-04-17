@@ -5,7 +5,6 @@
 #define BACKLOG 5
 
 MetaData *metadata;
-list<pthread_t > childThreads;
 map<int, struct ConnectionInfo> ConnectionMap;
 int nodeProcessId;
 NEIGHBOUR_MAP currentNeighbours;
@@ -557,7 +556,7 @@ void parseINIfile(char * fptr)
 			{
 				flags[9]=1;
 				value=(char*)strtok((char *)NULL,"=");
-				metadata->getMsgLifeTime=atoi((char*)value);
+				metadata->msgLifeTime=atoi((char*)value);
 				continue;
 			}
 			else if((strcasecmp((char*)key,"InitNeighbors")==0) && flags[10]==0 && initphase==1 && beaconphase==0)
@@ -678,7 +677,7 @@ void fillDefaultMetaData()
 
 	metadata->loggerFile[strlen("servant.log")]='\0';
 	metadata->lifeTimeOfMsg = 30;
-	metadata->getMsgLifeTime = 300;
+	metadata->msgLifeTime = 300;
 
 	metadata->beaconList = new list<NODEINFO_REF> ;
 	metadata->portNo = 0;
@@ -722,7 +721,7 @@ void printMetaData()
 	printf("autoShutDown: %d\n",metadata->autoShutDown);
 	printf("TTL: %d\n",metadata->ttl);
 	printf("msgLifeTime: %d\n",metadata->lifeTimeOfMsg);
-	printf("getMsgLifeTime: %d\n",metadata->getMsgLifeTime);
+	printf("getMsgLifeTime: %d\n",metadata->msgLifeTime);
 	printf("initNeighbor: %d\n",metadata->initNeighbor);
 	printf("joinTimeOut: %d\n",metadata->joinTimeOut);
 	printf("keepAliveTimeOut: %d\n",metadata->keepAliveTimeOut);
@@ -738,6 +737,9 @@ void printMetaData()
 
 void *server_thread(void *dummy)
 {
+
+	list<pthread_t > serverChildThreads;
+
     int nSocket;
 	struct sockaddr_in serv_addr;
     nSocket = socket(AF_INET,SOCK_STREAM,0);
@@ -781,7 +783,7 @@ void *server_thread(void *dummy)
 
 		newsockfd = accept(nSocket, (struct sockaddr *)&cli_addr, (socklen_t *)&cli_len );
 
-		printf("-------->accept occured\n");
+		//printf("-------->accept occured\n");
 		if(globalShutdownToggle)
 			break;
 
@@ -823,7 +825,7 @@ void *server_thread(void *dummy)
 			}
 
 			ConnectionMap[newsockfd].myReadId = rThread;
-			childThreads.push_front(rThread);
+			serverChildThreads.push_front(rThread);
 
 			struct Message msg;
 			msg.status = 0;
@@ -844,12 +846,12 @@ void *server_thread(void *dummy)
 			}
 
 			ConnectionMap[newsockfd].myWriteId = wThread;
-			childThreads.push_front(wThread);
+			serverChildThreads.push_front(wThread);
 		}
 	}
 	//Join all threads
 	void *thread;
-	for(list<pthread_t>::iterator i=childThreads.begin(); i!=childThreads.end();i++)
+	for(list<pthread_t>::iterator i=serverChildThreads.begin(); i!=serverChildThreads.end();i++)
 	{
 		if((pthread_join((*i),&thread))!=0)
 		{
@@ -858,7 +860,7 @@ void *server_thread(void *dummy)
 			exit(1);
 		}
 	}
-	childThreads.clear();
+	serverChildThreads.clear();
 }
 
 void constructLogAndInitneighbourFileNames()
@@ -1109,37 +1111,63 @@ void init()
 	acceptProcessId=getpid();
 	if(metadata->iAmBeacon)
 	{
-		printf("Beacon detected in init function\n");
+		printf("[Main] I am a Beacon \n");
 		//create server thread which continuesly accepts connections
 		pthread_t serverThread;
+
+		printf("[Main]\tstart server\n");
 		if((pthread_create(&serverThread, NULL, server_thread, (void *)NULL))!=0)
 		{
 			//writeLog("//Server thread creation failed,hence the node will exit\n");
 			exit(1);
 		}
-		childThreads.push_front(serverThread);
+		childThreadList.push_front(serverThread);
 
 		//create clients, that in turn connect to other beacons' server.
-		struct NodeInfo temp[10];
+		struct NodeInfo tempBeaconNode[10];
 		int index=0;
+		printf("[Main]\tConnect to beacons size :%d\n", metadata->beaconList->size());
+
 		for(list<struct NodeInfo*>::iterator it = metadata->beaconList->begin(); it != metadata->beaconList->end(); it++)
 		{
-			memcpy(&temp[index].portNo,&(*it)->portNo, sizeof((*it)->portNo));
-			printf("port number is %d\n",(*it)->portNo);
-			for(unsigned int i = 0;i < strlen((const char*)((*it)->hostname));i++)
-				temp[index].hostname[i] = (*it)->hostname[i];
-			temp[index].hostname[strlen((const char*)((*it)->hostname))]='\0';
-			printf("hostname and port in main.cpp::%s %d\n",temp[index].hostname,temp[index].portNo);
+
+			memcpy(&tempBeaconNode[index].portNo,&(*it)->portNo, sizeof((*it)->portNo));
+
+			printf("[Main] \tport number is %d\n",(*it)->portNo);
+
+			for(UINT i = 0;i < strlen((const char*)((*it)->hostname));i++)
+				tempBeaconNode[index].hostname[i] = (*it)->hostname[i];
+
+			tempBeaconNode[index].hostname[strlen((const char*)((*it)->hostname))]='\0';
+
+
+			printf("[Main] \tMe %s:%d , Neighbour Beacon %s:%d \n",
+									metadata->hostName, metadata->portNo,
+									tempBeaconNode[index].hostname,tempBeaconNode[index].portNo);
+
+			if(metadata->portNo == tempBeaconNode[index].portNo) {
+
+				index++;
+				printf("[Main] Move to next beacon...\n");
+				continue;
+			}
+
+			printf("[Main]\t Kickoff connect thread %s:%d\n" ,
+					tempBeaconNode[index].hostname,tempBeaconNode[index].portNo);
+
 			pthread_t connectThread;
-			if(pthread_create(&connectThread, NULL,clientThread, (void *)&temp[index])!=0)
+			if(pthread_create(&connectThread, NULL,clientThread, (void *)&tempBeaconNode[index])!=0)
 			{
 				printf("error in creating thread\nWill exit now");
 				//writeLog("//error in creating thread\nWill exit now\n");
 				exit(1);
 			}
-			childThreads.push_front(connectThread);
+
+			childThreadList.push_front(connectThread);
 			index++;
 		}
+
+		printf("[Main]\tChild connect threads :%d\n", childThreadList.size());
 	}
 	else
 	{

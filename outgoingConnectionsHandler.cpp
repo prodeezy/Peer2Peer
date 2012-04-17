@@ -50,10 +50,118 @@ int makeTCPPipe(UCHAR *hostName, unsigned int portNum ){
 
 }
 
+string toStringMetaData(struct FileMetadata metadata) {
+
+	string strMetadata;
+
+	strMetadata.append("[metadata]");
+	strMetadata.append("\nFileName=");		strMetadata.append((char*)metadata.fName);
+
+	int strLen = strMetadata.length();
+	sprintf(&strMetadata[strLen], "%d", metadata.fSize);
+
+	//strMetadata.append("\nFileSize=");		strMetadata.append(metadata.fSize);
+	//strMetadata.append("\nSHA1=");			strMetadata.append(metadata.SHA1);
+	strLen = strMetadata.length();
+	strMetadata.resize(strLen+20) ;
+	memcpy(&strMetadata[strLen], metadata.SHA1, 20);
+
+	//strMetadata.append("\nNonce=");			strMetadata.append(metadata.NONCE);
+	strLen = strMetadata.length();
+	strMetadata.resize(strLen+20) ;
+	memcpy(&strMetadata[strLen], metadata.NONCE, 20);
+
+	strMetadata.append("\nKeywords=");
+	list<string> keywordList = metadata.keywords;
+	for(list<string>::iterator iter=keywordList.begin(); iter!=keywordList.end(); iter++) {
+
+		strMetadata.append((*iter));
+		if( iter++ != keywordList.end()) {
+			strMetadata.append(" ");
+		}
+		iter--;
+	}
+	strMetadata.append("\nBit-vector=");
+	strLen = strMetadata.length();
+	strMetadata.resize(strLen+128);
+	memcpy(&strMetadata[strLen], metadata.bitVector, 128);
+
+}
+
+/**
+ * - Decide whether or not to send STORE message to neighbour
+ * - create message from metadata and filename (NOT file data)
+ * - Create a string version of metadata,
+ **/
+void fireSTORERequest(struct FileMetadata fileMetadata, char *fileName) {
+
+	printf("[Writer] Send STORE to neighbours, fileName:%s\n", fileName);
+
+	string strMetaData = toStringMetaData(fileMetadata);
+	int metadataLen = strMetaData.length();
+	int fileNameLength = strlen(fileName);
+
+	struct CachePacket packet;
+	packet.msgLifetimeInCache = metadata->msgLifeTime;
+	packet.status=0;
+
+	// generate UOID
+	UCHAR uoid[SHA_DIGEST_LENGTH] ;
+	GetUOID( const_cast<char *>("msg"), uoid, SHA_DIGEST_LENGTH) ;
+
+
+
+	string cacheKey = string((const char *)uoid, SHA_DIGEST_LENGTH);
+	LOCK_ON(&msgCacheLock);
+
+		MessageCache[cacheKey] = packet;
+
+	LOCK_OFF(&msgCacheLock);
+
+
+
+	LOCK_ON(&connectionMapLock);
+
+		for(NEIGHBOUR_MAP_ITERATOR iter = currentNeighbours.begin(); iter != currentNeighbours.end() ; iter++) {
+
+			int connSocket = (*iter).second;
+			double coinFlip = (double)drand48();
+
+			if(coinFlip <= metadata->neighborStoreProb) {
+
+				printf("[Writer] \t create message and queue to be sent to neighbour, socket:%d\n", connSocket);
+				// create message and send to neighbour
+				struct Message msg;
+
+				// set uoid
+				memcpy(msg.uoid, uoid, SHA_DIGEST_LENGTH);
+
+				// set file name and metadata
+				msg.metadata = (UCHAR *)malloc(metadataLen+1);
+				strncpy((char *)msg.metadata , strMetaData.c_str(), metadataLen);
+				strncpy((char *)msg.fileName , fileName, fileNameLength);
+
+				msg.metadata[metadataLen] 	 = '\0';
+				msg.fileName[fileNameLength] = '\0';
+
+				msg.status 	= 3;
+				msg.msgType	= STORE_REQ;
+				msg.ttl    	= metadata->status_ttl;
+
+				msg.fileNameLength = fileNameLength+1;
+				msg.metadatLen = metadataLen+1;
+
+				safePushMessageinQ(connSocket , msg);
+			}
+		}
+
+	LOCK_OFF(&connectionMapLock);
+}
+
 void *connectionWriterThread(void *args) {
 
 	UCHAR *buffer ;
-	uint32_t length = 0 ;
+	uint32_t bufferLength = 0 ;
 	FILE *fp;
 	struct Message outgoingMsg ;
 	struct stat st ;
@@ -63,6 +171,8 @@ void *connectionWriterThread(void *args) {
 
 	while(!globalShutdownToggle){
 
+
+		LOCK_OFF(&ConnectionMap[connSocket].mQLock);
 
 		bool isConnectionShutting = false;
 		int msgQSize =0;
@@ -79,54 +189,52 @@ void *connectionWriterThread(void *args) {
 
 		if(msgQSize > 0){
 
+
 			LOCK_ON(&ConnectionMap[connSocket].mQLock) ;
 
+				printf("[Writer] LOCK_ON1(%d)\n",connSocket);
+				printf("[Writer] pick next outgoing message ...\n");
 				outgoingMsg = CONN_SOCKET_MSG_Q(connSocket).front() ;
 				CONN_SOCKET_MSG_Q(connSocket).pop_front() ;
 
 			LOCK_OFF(&ConnectionMap[connSocket].mQLock) ;
+			printf("[Writer] LOCK_OFF1(%d)\n",connSocket);
 
 		} else {
 
+			//printf("[Writer] messageQ is empty!\n");
 			bool doBreak = false;
 			bool doContinue = false;
 
-			LOCK_ON(&ConnectionMap[connSocket].mQLock) ;
-
-				//pthread_cond_wait(&ConnectionMap[connSocket].mesQCv, &ConnectionMap[connSocket].mQLock) ;
-				if (ConnectionMap[connSocket].shutDown) {
-
-					doBreak = true;
-				}
-			LOCK_OFF(&ConnectionMap[connSocket].mQLock) ;
-			if(doBreak)					break;
 
 			LOCK_ON(&ConnectionMap[connSocket].mQLock) ;
+				//printf("[Writer] LOCK_ON2(%d)\n",connSocket);
 
-				outgoingMsg = CONN_SOCKET_MSG_Q(connSocket).front() ;
+			//	outgoingMsg = CONN_SOCKET_MSG_Q(connSocket).front() ;
 				if(CONN_SOCKET_MSG_Q(connSocket).size() == 0) {
 
-					sleep(1);
+					//sleep(1);
 					doContinue = true;
 				} else {
 
+					outgoingMsg = CONN_SOCKET_MSG_Q(connSocket).front() ;
 					CONN_SOCKET_MSG_Q(connSocket).pop_front() ;
 				}
 			LOCK_OFF(&ConnectionMap[connSocket].mQLock) ;
-			if(doContinue)				continue;
+			//printf("[Writer] LOCK_OFF2(%d)\n",connSocket);
+
+			if(doContinue){
+				//printf("[Writer] ... Continue ...\n");
+				continue;
+			}
 
 		}
-
-		bool doBreak = false;
 		if (ConnectionMap[connSocket].shutDown) {
 
-			doBreak = true;
-		}
-
-		if(doBreak) {
-
-			LOCK_OFF(&ConnectionMap[connSocket].mQLock);
-			break ;
+			printf("[Writer]shutdown break\n");
+			printf("[Writer] LOCK_OFF(%d)\n",connSocket);
+			LOCK_OFF(&ConnectionMap[connSocket].mQLock) ;
+			break;
 		}
 
 
@@ -173,6 +281,7 @@ void *connectionWriterThread(void *args) {
 
 		}
 
+		printf("[Writer] Outgoing msg type switch case ...\n");
 		if (outgoingMsg.msgType == HELLO_REQ){
 
 			UCHAR host[256] ;
@@ -182,13 +291,13 @@ void *connectionWriterThread(void *args) {
 
 			gethostname((char *)host, 256) ;
 			host[255] = '\0' ;
-			length = strlen((char *)host) + 2 ;
-			memcpy((char *)&header[23], &(length), 4) ;
+			bufferLength = strlen((char *)host) + 2 ;
+			memcpy((char *)&header[23], &(bufferLength), 4) ;
 
-			buffer = (UCHAR *)malloc(length) ;
-			memset(buffer, '\0', length) ;
+			buffer = (UCHAR *)malloc(bufferLength) ;
+			memset(buffer, '\0', bufferLength) ;
 			memcpy((char *)buffer, &(metadata->portNo), 2) ;
-			memcpy(buffer + 2 , host, length-2);
+			memcpy(buffer + 2 , host, bufferLength-2);
 
 
 			//Incrementing Ready STatus
@@ -203,17 +312,17 @@ void *connectionWriterThread(void *args) {
 			if (outgoingMsg.status == 1){
 
 				buffer = outgoingMsg.buffer ;
-				length = outgoingMsg.dataLen ;
+				bufferLength = outgoingMsg.dataLen ;
 			}
 			else{
 
 				UCHAR host[256] ;
 				gethostname((char *)host, 256) ;
 				host[255] = '\0' ;
-				length = strlen((char *)host) + 6 ;
+				bufferLength = strlen((char *)host) + 6 ;
 
-				buffer = (UCHAR *)malloc(length) ;
-				memset(buffer, '\0', length) ;
+				buffer = (UCHAR *)malloc(bufferLength) ;
+				memset(buffer, '\0', bufferLength) ;
 				memcpy((UCHAR *)buffer, &(metadata->distance), 4) ;
 				memcpy((UCHAR *)&buffer[4], &(metadata->portNo), 2) ;
 
@@ -223,7 +332,7 @@ void *connectionWriterThread(void *args) {
 			header[0] = 0xfc;
 			memcpy((char *)&header[21], &(outgoingMsg.ttl), 1) ;
 			header[22] = 0x00 ;
-			memcpy((char *)&header[23], &(length), 4) ;
+			memcpy((char *)&header[23], &(bufferLength), 4) ;
 
 		}
 		// Sending Join Response
@@ -236,7 +345,7 @@ void *connectionWriterThread(void *args) {
 				buffer = (UCHAR *)malloc(outgoingMsg.dataLen) ;
 				for (int i = 0 ; i < outgoingMsg.dataLen ; i++)
 					buffer[i] = outgoingMsg.buffer[i] ;
-				length = outgoingMsg.dataLen ;
+				bufferLength = outgoingMsg.dataLen ;
 			}
 			else{
 
@@ -244,9 +353,9 @@ void *connectionWriterThread(void *args) {
 				UCHAR host[256] ;
 				gethostname((char *)host, 256) ;
 				host[255] = '\0' ;
-				length = strlen((char *)host) + 26 ;
-				buffer = (UCHAR *)malloc(length) ;
-				memset(buffer, '\0', length) ;
+				bufferLength = strlen((char *)host) + 26 ;
+				buffer = (UCHAR *)malloc(bufferLength) ;
+				memset(buffer, '\0', bufferLength) ;
 
 				for(unsigned int i = 0;i<20;i++){
 					buffer[i] = outgoingMsg.uoid[i];
@@ -261,13 +370,13 @@ void *connectionWriterThread(void *args) {
 			header[0] = JOIN_RSP;
 			memcpy((char *)&header[21], &(outgoingMsg.ttl), 1) ;
 			header[22] = 0x00 ;
-			memcpy((char *)&header[23], &(length), 4) ;
+			memcpy((char *)&header[23], &(bufferLength), 4) ;
 		}
 		else if (outgoingMsg.msgType == KEEPALIVE){
 			// Keepalive request being sent
 
-			length = 0;
-			memcpy((char *)&header[23], &(length), 4) ;
+			bufferLength = 0;
+			memcpy((char *)&header[23], &(bufferLength), 4) ;
 
 			header[21] = 0x01;
 			header[0]  = KEEPALIVE;
@@ -281,27 +390,28 @@ void *connectionWriterThread(void *args) {
 		// Status Message request
 		else if (outgoingMsg.msgType == STATUS_REQ){
 
-
-			////printf("[Writer-%d]\t Sending Status message %d\n", (int)connSocket, (int)connSocket) ;
-
+			printf("[Writer] Sending STATUS REQ to %d\n" , connSocket);
 
 			if (outgoingMsg.status == 1){
 
+				printf("[Writer] ...status = 1 \n");
 				//originated from elsewhere
-				length = outgoingMsg.dataLen ;
+				bufferLength = outgoingMsg.dataLen ;
 				buffer = outgoingMsg.buffer ;
 			}
 			else{
 
+				printf("[Writer] ...status = %d \n", outgoingMsg.status);
 				buffer = (UCHAR *)malloc(1) ;
 				MEMSET_ZERO(buffer, 1) ;
 				buffer[0] = outgoingMsg.statusType ;
-				length = 1 ;
+				bufferLength = 1 ;
 			}
 
+			printf("[Writer] .... prepare header\n");
 			header[22] = 0x00 ;
 			header[0] = STATUS_REQ;
-			memcpy((char *)header + 23, &(length), 4) ;
+			memcpy((char *)header + 23, &(bufferLength), 4) ;
 			memcpy((char *)header + 21, &(outgoingMsg.ttl), 1) ;
 
 
@@ -315,27 +425,31 @@ void *connectionWriterThread(void *args) {
 			header[0] = NOTIFY;
 			header[21] = 0x01 ;
 
-			length = 1;
-			memcpy((char *)(header + 23), &(length), 4) ;
+			bufferLength = 1;
+			memcpy((char *)(header + 23), &(bufferLength), 4) ;
 
 		}
 		else if (outgoingMsg.msgType == STATUS_RSP){
 
+			printf("[Writer] Sending STATUS RESPONSE to %d\n" , connSocket);
 			if (outgoingMsg.status == 1){
 
+				printf("[Writer] status = 1\n");
 				buffer = (UCHAR *)malloc(outgoingMsg.dataLen) ;
 				memcpy(buffer, outgoingMsg.buffer, outgoingMsg.dataLen);
-				length = outgoingMsg.dataLen ;
+				bufferLength = outgoingMsg.dataLen ;
 
 			}
 			else{
+
+				printf("[Writer] status != 1\n");
 
 				UCHAR host[256] ;
 				gethostname((char *)host, 256) ;
 				host[255] = '\0' ;
 
 				UINT lenth = strlen((char *)host) + 24 ;
-				length  =  lenth ;
+				bufferLength  =  lenth ;
 
 				buffer = (UCHAR *)malloc(lenth) ;
 				MEMSET_ZERO(buffer, lenth) ;
@@ -351,6 +465,7 @@ void *connectionWriterThread(void *args) {
 
 				if(outgoingMsg.statusType == 0x01){
 
+					printf("[Writer]Send STATUS RESPONSE to all neighbours....\n");
 					for(NEIGHBOUR_MAP::iterator currNeighIter = currentNeighbours.begin()
 							; currNeighIter != currentNeighbours.end()
 							; ++currNeighIter) {
@@ -358,39 +473,85 @@ void *connectionWriterThread(void *args) {
 
 						unsigned int lengthTwo = strlen((char *)((*currNeighIter).first.hostname)) + 2  ;
 						++currNeighIter ;
-						length += lengthTwo+4 ;
-						buffer = (UCHAR *)realloc(buffer, length) ;
+						bufferLength += lengthTwo+4 ;
+						buffer = (UCHAR *)realloc(buffer, bufferLength) ;
 
 
 						if ( currNeighIter != currentNeighbours.end() ) {
 
-							memcpy(&buffer[length-lengthTwo-4], &(lengthTwo), 4);
+							memcpy(&buffer[bufferLength-lengthTwo-4], &(lengthTwo), 4);
 						}
 						else{
 
 							UINT tempLengthTwo = 0 ;
-							memcpy(&buffer[length-lengthTwo-4], &(tempLengthTwo), 4);
+							memcpy(&buffer[bufferLength-lengthTwo-4], &(tempLengthTwo), 4);
 						}
 
 						--currNeighIter ;
 
-						memcpy(&buffer[length-lengthTwo], &((*currNeighIter).first.portNo ), 2) ;
+						memcpy(&buffer[bufferLength-lengthTwo], &((*currNeighIter).first.portNo ), 2) ;
 
-						for (int i = length - lengthTwo + 2 ; i < (int)length ; ++i) {
-							buffer[i] = host[i -(length-lengthTwo+2)] ;
+						for (int i = bufferLength - lengthTwo + 2 ; i < (int)bufferLength ; ++i) {
+							buffer[i] = host[i -(bufferLength-lengthTwo+2)] ;
 						}
 					}
 				}
 			}
-
+			printf("[Writer] build status response header \n");
 			header[0] = STATUS_RSP;
 			header[22] = 0x00 ;
-			memcpy((char *) ( header + 23), &(length), 4) ;
+			memcpy((char *) ( header + 23), &(bufferLength), 4) ;
 			memcpy((char *) ( header + 21), &(outgoingMsg.ttl), 1) ;
+
+		} else if (outgoingMsg.msgType == STORE_REQ){
+
+			FILE *fileRef;
+			// check if file exists
+			char *fileName = (char *)outgoingMsg.fileName;
+			fileRef = fopen(fileName, "rb");
+			if(fileRef == NULL) {
+
+				printf("[Writer]File to store could not be opened\n");
+				//doLog((UCHAR *)"//File to store could not be opened\n");
+				continue;
+			}
+
+			struct stat fileStat;
+			if(outgoingMsg.status != 1) {
+				// originated here
+
+				// write metadata length
+				bufferLength = outgoingMsg.metadatLen + 4;
+				uint32_t metadataLen = outgoingMsg.metadatLen;
+				MEMSET_ZERO(buffer, bufferLength) ;
+				memcpy(buffer, &metadataLen, 4);
+
+				// write metadata
+				memcpy((UCHAR *)buffer+4 , outgoingMsg.metadata, outgoingMsg.metadatLen);
+
+				// get file size
+
+				stat(fileName, &fileStat);
+				bufferLength += fileStat.st_size;
+
+
+			} else {
+				// forwarding the message, buffer was already filled by someone
+
+				bufferLength = outgoingMsg.dataLen ;
+		        buffer = outgoingMsg.buffer ;
+
+		        stat(fileName, &fileStat) ;
+		        bufferLength += fileStat.st_size ;
+				// special status for writing FILE on network
+				outgoingMsg.status = 3;
+
+			}
 		}
 
 
 
+		printf("[Writer] .... reset keepalive\n");
 		//KeepAlive message sending
 		//Resst the keepAliveTimer for this connection
 		if( ConnectionMap.find(connSocket) != ConnectionMap.end())
@@ -401,8 +562,23 @@ void *connectionWriterThread(void *args) {
 		}
 
 
+		if (ConnectionMap[connSocket].shutDown) {
+
+			printf("[Writer] shutdown BREAK\n");
+			printf("[Writer] LOCK_OFF(%d)\n",connSocket);
+			LOCK_OFF(&ConnectionMap[connSocket].mQLock);
+//			doBreak = true;
+			break;
+		}
+
+		/*if(doBreak) {
+			printf("doBreak occured,hence message not written to socket\n");
+			break ;
+		}*/
+
 		int return_code = 0 ;
 
+		//printf("[Writer] ... write header\n");
 		return_code = (int)write(connSocket, header, HEADER_SIZE) ;
 		if (return_code != HEADER_SIZE){
 			fprintf(stderr, "Socket Write Error") ;
@@ -410,35 +586,47 @@ void *connectionWriterThread(void *args) {
 
 		//printf("[Writer-%d]\t\tWrote %d bytes of header\n", connSocket, return_code);
 
+		// Send the data on network
 		if(outgoingMsg.status == 3){
-			write(connSocket, buffer, length - st.st_size) ;
-			UCHAR choonk[8192] ;
+
+			// FILE data is chunked
+
+			write(connSocket, buffer, bufferLength - st.st_size) ;
+			UCHAR fileChunk[8192] ;
 			// read the content of the file and write on the socket
 			//while(!feof(fp)){
-			while(1){
-				memset(choonk, '\0' , 8192) ;
-				int numBytes = fread(choonk, 1, 8192, fp) ;
+			for(;;) {
+
+				MEMSET_ZERO(fileChunk, 8192) ;
+
+				int numBytes = fread(fileChunk, 1, 8192, fp) ;
 				if(numBytes == 0)
 					break;
-				write(connSocket, choonk, numBytes) ;
+				write(connSocket, fileChunk, numBytes) ;
 			}
+			printf("[Writer-%d]\t\tWrote CHUNKED %d bytes of buffer\n", connSocket, return_code);
 		}
 		else{
-			return_code = (int)write(connSocket, buffer, length) ;
-			if (return_code != (int)length){
+
+			//printf("[Writer] ... write buffer\n");
+			return_code = (int)write(connSocket, buffer, bufferLength) ;
+			if (return_code != (int)bufferLength){
 				fprintf(stderr, "[Writer]\t Failed to write buffer bytes") ;
 			}
-			//		////printf("[Writer-%d]\t\tWrote %d bytes of buffer\n", connSocket, return_code);
+			printf("[Writer-%d]\t\tWrote %d bytes of buffer\n", connSocket, return_code);
 		}
 
 
 		//logging the message sent from this node or forwarded from this node
 		UCHAR *logEntryRecord = NULL;
-
+/****
 		if(!(outgoingMsg.msgType == 0xfa && (joinNetworkPhaseFlag || ConnectionMap[connSocket].joinFlag == 1)))
 		{
-			//printf("[Writer]\t\tcreating LOG ENTRY for sock:%d, header:%s, buf:%s\n", connSocket, header, buffer);
+
+			printf("[Writer]\tcreating LOG ENTRY for sock:%d, header:%s, buf:%s\n", connSocket, header, buffer);
+
 			LOCK_ON(&logEntryLock) ;
+
 				if(! ( outgoingMsg.status== 0 || outgoingMsg.status == 2) )
 					logEntryRecord = prepareLogRecord('f', connSocket, header, buffer);
 				else
@@ -446,24 +634,28 @@ void *connectionWriterThread(void *args) {
 
 				if(logEntryRecord!=NULL) {
 					//		//printf("[Reader]\t\tWriting LOG ENTRY\n");
-					doLog(logEntryRecord);
+					//doLog(logEntryRecord);
 				}
+
 			LOCK_OFF(&logEntryLock) ;
 		}
-
+****/
 		// Do some logging
-		//	////printf("[Writer]\t About to free buffer len=%d \n", len);
-		if(length > 0 ) {
+		//printf("[Writer]\t About to free buffer \n");
+		if(bufferLength > 0 ) {
 
 			free(buffer) ;
 		}
 
-		////printf("[Writer-%d]\t ...... End of writer loop\n", connSocket);
+		//printf("[Writer-%d]\t ...... End of writer loop\n", connSocket);
 
 		sleep(1);
 
 		////printf("[Writer-%d]\t ...... Done sleeping\n", connSocket);
 	}
+
+	printf("[Writer] LOCK_OFF(%d)\n",connSocket);
+	LOCK_OFF(&ConnectionMap[connSocket].mQLock);
 
 	////printf("[Writer-%d]\t********** Leaving write thread \n", connSocket);
 	pthread_exit(0);
@@ -494,7 +686,7 @@ void waitForChildThreadsToFinish() {
 		int res = pthread_join((*it), &thread_result);
 		if (res != 0) {
 			perror("Thread join failed");
-			doLog((UCHAR *)"//In Join Network: Thread Joining Failed\n");
+			//doLog((UCHAR *)"//In Join Network: Thread Joining Failed\n");
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -525,13 +717,17 @@ void writeRespondingNeighboursToInitFile(FILE *& initNeighboursFile)
  **/
 void serializeStatusResponsesToFile(){
 
-	//printf("[Status]\tWriting to status file : %s\n" , (char *)metadata->status_file) ;
+	printf("[Status]\tSerialize to status file \n" ) ;
 
 	bool doNothing = true;
 	int intNothing = 0;
 	float floatNothing = 0.0f;
 
+	fflush(stdout);
+
+
 	LOCK_ON(&statusMsgLock) ;
+
 	FILE *statusOutFile = fopen((char *)metadata->statusOutFileName, "a") ;
 	if (statusOutFile == NULL){
 		//fprintf(stderr, "File open failed\n") ;
@@ -540,7 +736,8 @@ void serializeStatusResponsesToFile(){
 		else
 			 intNothing++;
 
-		doLog((UCHAR *)"//Failed to open STATUS FILE\n");
+		printf("[Status] Failed to open STATUS FILE\n");
+		//doLog((UCHAR *)"//Failed to open STATUS FILE\n");
 		intNothing = -1;
 		exit(0) ;
 	}
@@ -551,6 +748,7 @@ void serializeStatusResponsesToFile(){
 
 	double doubleNothing = 5.1525f;
 
+	printf("[Status] Looping through status responses, build distinct nodes\n");
 	for (; probeRespIter != statusProbeResponses.end() 	; ) {
 
 		floatNothing = -110.0f;
@@ -572,6 +770,7 @@ void serializeStatusResponsesToFile(){
 		++probeRespIter;
 	}
 
+	printf("[Status]distinct nodes size ...%d \n" , distinctNodes.size());
 	intNothing = 0;
 	if(distinctNodes.size() == 0)
 	{
@@ -609,16 +808,19 @@ void serializeStatusResponsesToFile(){
 	}
 
 	set< struct NodeInfo >::iterator it = distinctNodes.begin();
+	printf("[Status] Looping distinct nodes \n");
 	for (; it != distinctNodes.end() ; ){
 
+		printf("[Status]\t write node data \n");
 		intNothing = -1;
 		doNothing = false;
 
 		fputs("n -t * -s ", statusOutFile) ;
-		UCHAR portS[20] ;
 
 		floatNothing += -1.0f;
+		doNothing = false;
 
+		UCHAR portS[20] ;
 		sprintf((char *)portS, "%d", (*it).portNo) ;
 
 		doNothing = true;
@@ -702,6 +904,8 @@ void serializeStatusResponsesToFile(){
 				floatNothing = -1 + intNothing;
 		}
 
+		intNothing++;
+		floatNothing--;
 		++responseIter;
 	}
 
@@ -710,6 +914,7 @@ void serializeStatusResponsesToFile(){
 	else
 		 intNothing += 10;
 
+	printf("[Status] Flush and Close status file\n");
 	fflush(statusOutFile) ;
 	fclose(statusOutFile) ;
 
@@ -719,7 +924,7 @@ void serializeStatusResponsesToFile(){
 
 	LOCK_OFF(&statusMsgLock) ;
 
-	//printf("[Status] Status file written\n") ;
+	printf("[Status] ********** Status file written *********\n") ;
 }
 
 
@@ -728,7 +933,7 @@ void serializeStatusResponsesToFile(){
 // Method to flood the status requests
 void floodStatusRequestsIntoNetwork(){
 
-	//printf("[Status] +++++++> Gather status info..\n");
+	printf("[Status] Gather status info, flood status request..\n");
 	UCHAR uoid[SHA_DIGEST_LENGTH] ;
 	GetUOID( const_cast<char *> ("msg"), uoid, sizeof(uoid)) ;
 	//			memcpy((char *)&header[1], uoid, 20) ;
@@ -744,21 +949,28 @@ void floodStatusRequestsIntoNetwork(){
 	pthread_mutex_unlock(&msgCacheLock);
 
 	//sending the status request message to all of it's neighbor
-	pthread_mutex_lock(&currentNeighboursLock) ;
-	for(NEIGHBOUR_MAP::iterator it = currentNeighbours.begin(); it != currentNeighbours.end() ; ++it){
+	LOCK_ON(&currentNeighboursLock) ;
 
-		struct Message statusMsg ;
-		statusMsg.msgType = 0xac ;
-		statusMsg.status = 2 ;
-		statusMsg.ttl = metadata->ttl ;
-		statusMsg.statusType = 0x01 ;
-		for (int i=0 ; i < SHA_DIGEST_LENGTH ; i++)
-			statusMsg.uoid[i] = uoid[i] ;
-		safePushMessageinQ((*it).second, statusMsg) ;
-	}
-	pthread_mutex_unlock(&currentNeighboursLock) ;
+		printf("[Status] Flood to neighbours ... size:%d\n" , currentNeighbours.size());
+		for(NEIGHBOUR_MAP::iterator it = currentNeighbours.begin(); it != currentNeighbours.end() ; ++it){
 
-	//printf("[Status] +++++++> Done gathering status info..\n");
+			printf("[Status]\t send to neighbor -> %d\n", (*it).second);
+
+			struct Message statusMsg ;
+			statusMsg.msgType = 0xac ;
+			statusMsg.status = 2 ;
+			statusMsg.ttl = metadata->ttl ;
+			statusMsg.statusType = 0x01 ;
+			for (int i=0 ; i < SHA_DIGEST_LENGTH ; i++)
+				statusMsg.uoid[i] = uoid[i] ;
+
+			printf("[Status]\t Add to queue to be sent, ttl=%d\n", statusMsg.ttl);
+			safePushMessageinQ((*it).second, statusMsg) ;
+		}
+
+	LOCK_OFF(&currentNeighboursLock) ;
+
+	printf("[Status] Done flooding status request.\n");
 }
 
 
@@ -816,7 +1028,7 @@ void performJoinNetworkPhase() {
 			int res = pthread_create(&readerThread, NULL, connectionReaderThread , (void *)beaconConnectSocket);
 			if (res != 0) {
 				//perror("Thread creation failed");
-				doLog((UCHAR *)"//In Join Network: Read Thread Creation Failed\n");
+			//	doLog((UCHAR *)"//In Join Network: Read Thread Creation Failed\n");
 				exit(EXIT_FAILURE);
 			}
 			childThreadList.push_front(readerThread);
@@ -827,7 +1039,7 @@ void performJoinNetworkPhase() {
 			res = pthread_create(&writerThread, NULL, connectionWriterThread , (void *)beaconConnectSocket);
 			if (res != 0) {
 				//perror("Thread creation failed");
-				doLog((UCHAR *)"//In Join Network: Write Thread Creation Failed\n");
+				//doLog((UCHAR *)"//In Join Network: Write Thread Creation Failed\n");
 				exit(EXIT_FAILURE);
 			}
 			childThreadList.push_front(writerThread);
@@ -841,7 +1053,7 @@ void performJoinNetworkPhase() {
 	if(beaconConnectSocket == -1) {
 
 		fprintf(stderr,"No Beacon node up\n") ;
-		doLog((UCHAR *)"//NO Beacon Node is up, shutting down\n");
+		//doLog((UCHAR *)"//NO Beacon Node is up, shutting down\n");
 		exit(0) ;
 	}
 
@@ -851,8 +1063,8 @@ void performJoinNetworkPhase() {
 	pthread_t t_timer_thread ;
 	int res = pthread_create(&t_timer_thread , NULL , general_timer , (void *)NULL);
 	if (res != 0) {
-		//perror("Thread creation failed");
-		doLog((UCHAR *)"//In Join Network: Timer Thread Creation Failed\n");
+		perror("Thread creation failed");
+		//doLog((UCHAR *)"//In Join Network: Timer Thread Creation Failed\n");
 		exit(EXIT_FAILURE);
 	}
 	childThreadList.push_front(t_timer_thread);
@@ -871,7 +1083,7 @@ void performJoinNetworkPhase() {
 	if (initNeighboursFile == NULL){
 
 		//printf("[JoinPhase]\tIn Join Network: Failed to open Init_Neighbor_list file\n");
-		doLog((UCHAR *)"//In Join Network: Failed to open Init_Neighbor_list file\n");
+		//doLog((UCHAR *)"//In Join Network: Failed to open Init_Neighbor_list file\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -884,7 +1096,7 @@ void performJoinNetworkPhase() {
 	if(joinResponses.size() < metadata->initNeighbor){
 
 		//printf("[JoinPhase]\t  Not enough join responses, Exiting! \n");
-		doLog((UCHAR *)"//Failed to locate Init Neighbor number of nodes\n");
+		//doLog((UCHAR *)"//Failed to locate Init Neighbor number of nodes\n");
 		//                fclose(f_log);
 		exit(0);
 	}

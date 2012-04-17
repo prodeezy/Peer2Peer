@@ -12,7 +12,7 @@ void *general_timer(void *dummy)
 			printf("Global shutdown toggle true encountered in timer thread\n");
 			break;
 		}
-		
+
 		if(!joinNetworkPhaseFlag)
 		{
 			//Auto-shutdown check
@@ -27,7 +27,7 @@ void *general_timer(void *dummy)
 				printf("//The auto-shutdown timer count is zero.\nSIGTERM called");
 				kill(nodeProcessId,SIGTERM);
 			}
-			
+
 			//screw up the message cache
 			pthread_mutex_lock(&msgCacheLock);
 			map<string, struct CachePacket>::iterator temp;
@@ -43,23 +43,32 @@ void *general_timer(void *dummy)
 				}
 			}
 			pthread_mutex_unlock(&msgCacheLock);
-			
+			printf("[Timer] ... statusFloodTimeout = %d\n" , metadata->statusFloodTimeout);
+			fflush(stdout);
 			if(statusTimerFlag!=0)
 			{
-				if(metadata->statusFloodTimeout > 0)
-				{
+				if(metadata->statusFloodTimeout > 0) {
+
 					metadata->statusFloodTimeout--;
-					
-					if(metadata->statusFloodTimeout == 0)
-					{
-						pthread_mutex_lock(&statusMsgLock);
+					metadata->statusFloodTimeout--;
+					printf("[Timer] set statusFloodTimeout = %d\n" , metadata->statusFloodTimeout);
+					fflush(stdout);
+
+				}
+
+				if(metadata->statusFloodTimeout <= 0) {
+
+					printf("[Timer]\t status flood timed out\n");
+					fflush(stdout);
+					pthread_mutex_lock(&statusMsgLock);
+						printf("[Timer]\t **** Signal the status' condition variable\n");
+						fflush(stdout);
 						pthread_cond_signal(&statusMsgCV);
 						statusTimerFlag=0;
-						pthread_mutex_unlock(&statusMsgLock);
-					}
+					pthread_mutex_unlock(&statusMsgLock);
 				}
 			}
-			
+
 			//keepalivetimer tracking
 			pthread_mutex_lock(&currentNeighboursLock);
 			if(!currentNeighbours.empty())
@@ -87,7 +96,7 @@ void *general_timer(void *dummy)
 			{
 				if(metadata->joinTimeOut > 0)
 					metadata->joinTimeOut--;
-				
+
 				if(metadata->joinTimeOut == 0)
 				{
 					kill(acceptProcessId,SIGUSR1);

@@ -109,6 +109,203 @@ void *keyboard_thread(void *dummy)
 			break;
 		}
 		
-
+		else if(strstr((char*)input,"store ")!=NULL)
+		{
+			printf("$$$$$store command caught\n");
+			fflush(stdout);
+			unsigned char* tokens;
+			tokens=(unsigned char*)strtok((char*)input," ");
+			printf("token is:%s\n",tokens);
+			fflush(stdout);
+			struct FileMetadata tempMetadata;
+			fflush(stdout);
+			tokens=(unsigned char*)strtok(NULL," ");
+			
+			printf("token is:%s\n",tokens);
+			fflush(stdout);
+			//Set the file name to be stored
+			if(tokens==NULL)
+			{
+				printf("Incorrect store command entered\nRe-enter\n");
+				fflush(stdout);
+				continue;
+			}
+			strncpy((char *)tempMetadata.fName, (char *)tokens, strlen((char *)tokens));
+			printf("The file name is:%s\n",(char *)tempMetadata.fName);
+			fflush(stdout);
+			//Fill the file size in the filemetadata struct
+			struct stat s;
+			stat((char *)tempMetadata.fName, &s);
+			tempMetadata.fSize=(unsigned int)s.st_size;
+			printf("File size obtained\n");
+			fflush(stdout);
+			//Obtain the ttl from the commandline
+			tokens=(unsigned char*)strtok(NULL," ");
+			for (int i = 0; i < strlen((char*)tokens); i++)
+			{
+				if (!isdigit(tokens[i]))
+				{
+					printf("Incorrect store command entered\nRe-enter\n");
+					fflush(stdout);
+					continue;
+				}
+			}
+			metadata->status_ttl=atoi((char*)tokens);
+			printf("here1\n");
+			fflush(stdout);
+			unsigned char buffer;
+			FILE *f = fopen((char *)tempMetadata.fName, "rb");
+			if(f==NULL)
+			{
+				printf("The file is not present in cwd\n");
+				fflush(stdout);
+				exit(0);
+			}
+			SHA_CTX *c = (SHA_CTX *)malloc(sizeof(SHA_CTX));
+			//memset(c, 0, sizeof(c));
+			memset(c, 0, sizeof(c));
+			printf("SHA1 here2\n");
+			fflush(stdout);
+			SHA1_Init(c);
+			while(fread(&buffer,1,1,f)!=0)
+				SHA1_Update(c, &buffer, 1);
+	
+			SHA1_Final(tempMetadata.SHA1, c);
+			fclose(f);
+			printf("SHA1 calculated\n");
+			fflush(stdout);
+			tokens=(unsigned char*)strtok(NULL,"\n");
+			printf("after all tokens\n");
+			string strToken((char*)tokens);
+			printf("All key words are:%s",strToken.c_str());
+			fflush(stdout);
+			fflush(stdout);
+			/*
+			int strLength=0;
+			for(int i=0;i<strToken.length();i++)
+			{
+				if(strToken[i]=='"')
+					strToken[i]='';
+				strLength++;
+			}
+			strToken[++strLength]='\0';
+			*/
+			
+			//printf("After removing \":%s",strToken);
+			int count=0;
+			int start=0;
+			printf("before strtokens loop\n");
+			fflush(stdout);
+			
+			for(int j=0;j<strToken.length();j++)
+			{
+				if(((strToken[j]=='"'&&strToken[j-1]!='=')&&(strToken[j]=='"'&&strToken[j-1]!=' ')) || strToken[j]==' ' || strToken[j]=='=')
+				{
+					string part(strToken,start,count);
+					if(count!=0)
+					{
+						printf("keyword being pushed:%s\n",part.c_str());
+						tempMetadata.keywords.push_back(part);
+					}
+					count=0;
+					start=j+1;
+					continue;
+				}
+				if((strToken[j]=='"'&&strToken[j-1]=='=')||(strToken[j]=='"'&&strToken[j-1]==' '))
+				{
+					start=j+1;
+					continue;
+				}
+				count++;
+			}
+			
+			printf("here3.5\n");
+			fflush(stdout);
+			for(list<string >::iterator it = tempMetadata.keywords.begin(); it != tempMetadata.keywords.end(); ++it)
+				generateBitVector(tempMetadata.bitVector, (unsigned char *)(*it).c_str());
+			
+			
+			printf("here4\n");
+			fflush(stdout);
+			unsigned char psswdfName[256];
+			unsigned char psswd[SHA_DIGEST_LENGTH];
+			int globalfNumber=incfNumber();
+			printf("global file updated:%d\n",globalfNumber);
+			GetUOID(const_cast<char *> ("password"), psswd, sizeof(psswd));
+			printf("The password obtained is:%s\n",psswd);
+			sprintf((char*)psswdfName,"%s/file/%d.pass",metadata->currWorkingDir,globalfNumber);
+			FILE *psswdfptr=fopen((char*)psswdfName,"w+");
+			fprintf(psswdfptr,"%s",psswd);
+			fclose(psswdfptr);
+			
+			printf("here5\n");
+			fflush(stdout);
+			strncpy((char*)tempMetadata.NONCE,(char*)toSHA1_MD5(psswd,0),20);
+			writeDataToFile(tempMetadata,globalfNumber);
+			writeMetadataToFile(tempMetadata,globalfNumber);
+			populateIndexes(tempMetadata,globalfNumber);
+			
+			if(metadata->status_ttl > 0)
+			{
+				printf("[keyboard]\t Start flooding store msg\n");
+				fireSTORERequest(tempMetadata, (char *)tempMetadata.fName);
+			}
+		}
+		
+		else if(strstr((char*)input,"search ")!=NULL)
+		{
+			unsigned char* token;
+			
+			printf("The search command caught is:%s\n",input);
+			
+			token=(unsigned char*)strtok((char*)input," ");
+			
+			//token will now be key
+			
+			token=(unsigned char*)strtok(NULL,"=");
+			
+			unsigned char* pattern;
+			pattern=token;
+			printf("The value that is to be searched against is:%s",pattern);
+			
+			token=(unsigned char*)strtok(NULL,"\n");
+			unsigned char* value;
+			value=token;
+			printf("the value is:%s\n",value);
+			list <string> keyword_search;
+			string SToken((char*)value);
+			if(!strcasecmp((char*)pattern,"keywords"))
+			{
+				printf("the keywords are:\n");
+				int start=1;
+				int count=0;
+				for(int x=1;x<SToken.length()-1;x++)
+				{
+					if(SToken[x]==' ')
+					{
+						string part(SToken,start,count);
+						printf("The part being pushed is:%s\n",part.c_str());
+						keyword_search.push_back(part);
+						count=0;
+						start=x+1;
+						continue;
+					}
+					count++;
+				}
+				printf("Call initiate keyword search method\n");
+			}
+			
+			if(!strcasecmp((char*)pattern,"sha1hash"))
+			{
+				unsigned char* hash=convertToHex(value,20);
+				printf("Call initiate sha1 search method\n");
+			}
+			
+			if(!strcasecmp((char*)pattern,"filename"))
+			{
+				printf("Call initiate filename search method\n");
+			}
+			//Use locks to prevent the search results from being displayed
+		}
 	}
 }

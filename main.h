@@ -9,7 +9,8 @@
 #include <signal.h>
 #include <list>
 #include <sys/time.h>
-//#include <openssl/sha.h>
+#include <openssl/sha.h>
+#include <openssl/md5.h>
 #include <stdlib.h>
 #include <string.h>
 #include <netdb.h>
@@ -24,6 +25,7 @@
 #include <unistd.h>
 #include <ctype.h>
 #include <map>
+#include <sys/stat.h>
 
 
 #define HEADER_SIZE 								27
@@ -68,7 +70,8 @@ typedef list<struct JoinResponseInfo>					JOINRESPINFO_LIST;
  * Message structure that goes into the messgae queues
  */
 
-struct FileMetadata {
+struct FileMetadata 
+{
 
 	list<string> keywords;
 	UCHAR bitVector[128];
@@ -232,8 +235,13 @@ extern int acceptServerSocket ;
 extern int nodeProcessId;
 extern int acceptProcessId;
 extern pthread_mutex_t getvalue;
+extern FileMetadata *fMetadata;
 //extern FILE *loggerRef = NULL;
 
+extern map<string, list<int> > BitVectorIndexMap;
+extern map<string, list<int> > FileNameIndexMap;
+extern map<string, list<int> > SHA1IndexMap;
+extern map<string, int> fileIDMap;
 
 // For timer thread
 extern int statusTimerFlag ;
@@ -287,3 +295,15 @@ extern void blockForChildThreadsToFinish();
 extern int isBeaconNode(struct NodeInfo me);
 extern void floodStatusRequestsIntoNetwork();
 extern void doLog(UCHAR *tobewrittendata);
+
+extern unsigned char *toSHA1_MD5(unsigned char *str,int choice);
+extern void generateBitVector(unsigned char*bv, unsigned char*kw);
+extern void populateIndexes(struct FileMetadata f,unsigned int gfn);
+extern void writeIndex();
+extern void readIndex();
+extern int incfNumber();
+extern int covertToHex(unsigned char *str, int len);
+extern void writeMetadataToFile(struct FileMetadata fMetadata,int globalfNo);
+extern void writeDataToFile(struct FileMetadata fMetadata,int globalfNo);
+extern unsigned char* convertToHex(unsigned char *str, int len);
+extern void fireSTORERequest(struct FileMetadata fileMetadata, char *fileName);

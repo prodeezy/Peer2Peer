@@ -27,7 +27,10 @@ int checkTimerFlag = 0 ;
 pthread_mutex_t msgCacheLock ;
 pthread_mutex_t currentNeighboursLock ;
 bool globalShutdownToggle = 0 ;
-
+map<string, list<int> > BitVectorIndexMap;
+map<string, list<int> > FileNameIndexMap;
+map<string, list<int> > SHA1IndexMap;
+map<string, int> fileIDMap;
 struct NodeInfo n;
 
 

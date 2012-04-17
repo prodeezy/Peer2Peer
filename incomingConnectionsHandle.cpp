@@ -744,15 +744,58 @@ void handleRequestByCase(int connSocketFd,
 			packet.reqSockfd = connSocketFd;
 			packet.status = 1;
 
+
 			LOCK_ON(&msgCacheLock);
 				MessageCache[uoidStr] = packet;
 			LOCK_OFF(&msgCacheLock);
+
 
 			double coinFlip = drand48();
 			if(coinFlip <= metadata->storeProb) {
 
 				//TODO:write file to cache
+				string strMetaData((char *)&buffer[4], dataLen);
 
+				struct FileMetadata fileMetadata ;//= readMetaDataFromStr(strMetaData.c_str());
+
+				//TODO: check the indexes if file exists
+				bool doesFileExist = false; // lookupIndices();
+
+				if(doesFileExist) {
+
+					// update the LRU
+
+				} else {
+
+					int fileNumber = 1;
+					// fileNumber = incfNumber();  //update global file number
+					bool success=false;
+					// success = storeInLRU();
+
+					if(success) {
+
+						// write data
+						FILE* tempFile = fopen(tempFileName, "rb");
+						FILE* dataFile = fopen((char *)fileMetadata.fName, "wb");
+						char letter;
+						while(fread(&letter, 1, 1, tempFile)) {
+
+							fwrite(&letter, 1, 1, dataFile);
+						}
+						fclose(tempFile);
+						int closeRet = fclose(dataFile);
+						if(closeRet != 0) {
+
+							printf("[Reader] Closing data file FAILED! Try emptying space!!");
+
+						} else {
+
+							// writeMetadataToFile(fileMetadata, fileNumber);
+
+							// populateIndices(fileMetadata.fileName , fileNumber);
+						}
+					}
+				}
 
 				//send to neighbours
 				LOCK_ON(&currentNeighboursLock);

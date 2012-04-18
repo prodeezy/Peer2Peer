@@ -162,7 +162,7 @@ void *connectionWriterThread(void *args) {
 
 	UCHAR *buffer ;
 	uint32_t bufferLength = 0 ;
-	FILE *fp;
+	FILE *fileRef;
 	struct Message outgoingMsg ;
 	struct stat st ;
 	UCHAR header[HEADER_SIZE] ;
@@ -505,7 +505,7 @@ void *connectionWriterThread(void *args) {
 
 		} else if (outgoingMsg.msgType == STORE_REQ){
 
-			FILE *fileRef;
+
 			// check if file exists
 			char *fileName = (char *)outgoingMsg.fileName;
 			fileRef = fopen(fileName, "rb");
@@ -517,6 +517,7 @@ void *connectionWriterThread(void *args) {
 			}
 
 			struct stat fileStat;
+
 			if(outgoingMsg.status != 1) {
 				// originated here
 
@@ -530,7 +531,6 @@ void *connectionWriterThread(void *args) {
 				memcpy((UCHAR *)buffer+4 , outgoingMsg.metadata, outgoingMsg.metadatLen);
 
 				// get file size
-
 				stat(fileName, &fileStat);
 				bufferLength += fileStat.st_size;
 
@@ -595,15 +595,19 @@ void *connectionWriterThread(void *args) {
 			UCHAR fileChunk[8192] ;
 			// read the content of the file and write on the socket
 			//while(!feof(fp)){
+
+
 			for(;;) {
 
 				MEMSET_ZERO(fileChunk, 8192) ;
 
-				int numBytes = fread(fileChunk, 1, 8192, fp) ;
+				int numBytes = fread(fileChunk, 1, 8192, fileRef) ;
 				if(numBytes == 0)
 					break;
 				write(connSocket, fileChunk, numBytes) ;
 			}
+
+			fclose(fileRef);
 			printf("[Writer-%d]\t\tWrote CHUNKED %d bytes of buffer\n", connSocket, return_code);
 		}
 		else{

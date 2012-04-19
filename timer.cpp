@@ -43,7 +43,7 @@ void *general_timer(void *dummy)
 				}
 			}
 			pthread_mutex_unlock(&msgCacheLock);
-			printf("[Timer] ... statusFloodTimeout = %d\n" , metadata->statusFloodTimeout);
+			//printf("[Timer] ... statusFloodTimeout = %d\n" , metadata->statusFloodTimeout);
 			fflush(stdout);
 			if(statusTimerFlag!=0)
 			{

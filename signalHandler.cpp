@@ -38,13 +38,14 @@ void signal_handler(int sig)
 
 	if(sig==SIGINT)
 	{
-		printf("[SigHandle]\tCaught SIGINT, should write status file\n");
+		printf("[SigHandle]\tCaught SIGINT, should write status file if required\n");
 
 		pthread_mutex_lock(&statusMsgLock) ;
 
 			if(statusTimerFlag)
 				metadata->statusFloodTimeout = 0;
-
+			
+			printf("***Going to signal the status serialize which is on wait\n");
 			pthread_cond_signal(&statusMsgCV);
 
 		pthread_mutex_unlock(&statusMsgLock) ;

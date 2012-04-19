@@ -1,28 +1,91 @@
 #include "main.h"
 #include <fstream>
 
+
+
 /*
  *0==>SHA1
  *1==>MD5
  */
- 
-unsigned char *toSHA1_MD5(unsigned char *str,int choice)
+void toSHA1_MD5(UCHAR *str,int choice, UCHAR *buffer)
 {
-	unsigned char *encoded_str = (unsigned char *)malloc(sizeof(unsigned char)*20);
-	if(choice==0)
-		SHA1(str, strlen((const char *)str), encoded_str);
-	else
-		MD5(str, strlen((const char *)str), encoded_str);
-	return encoded_str;
+        //UCHAR *encoded_str = (UCHAR *)malloc(sizeof(unsigned char)*20);
+        if(choice==0)
+                SHA1(str, strlen((const char *)str), buffer);
+        else
+                MD5(str, strlen((const char *)str), buffer);
+//      return encoded_str;
 }
 
-void generateBitVector(unsigned char*bv, unsigned char*kw)
+/**
+ *  bitVector - unsigned char array of size 128
+ *  word          - keyword
+ */
+
+void generateBitVector(UCHAR *word , UCHAR *bitVector)
 {
-	for(int i=0;i<strlen((char*)kw);i++)
-		kw[i]=tolower(kw[i]);
-	
-	
+
+        printf("________ Begin:%s _________\n", (char *) word);
+        fflush(stdout);
+
+    unsigned char tempSHA1[SHA_DIGEST_LENGTH];
+    unsigned char tempMD5[MD5_DIGEST_LENGTH];
+
+    MEMSET_ZERO(tempSHA1, SHA_DIGEST_LENGTH);
+    MEMSET_ZERO(tempMD5 , MD5_DIGEST_LENGTH);
+
+      //  printf("\t memset ZERO, strlen(word) : %d\n", strlen((char*)word));
+        fflush(stdout);
+
+        // Normalize to lowercase
+        UCHAR lowerCaseWord[strlen((char *)word)];
+        for(int i=0 ; i<strlen((char*)word) && word[i] != '\0' ; i++) {
+
+//                printf("\t\t ...toLower :%c \n", word[i]);
+                lowerCaseWord[i]= tolower(word[i]);
+        }
+        strncpy((char *)word, (char *)lowerCaseWord, strlen((char *)word));
+
+        //printf("\t toSHA1_MD5 \n");
+        fflush(stdout);
+
+         toSHA1_MD5(word, 0, tempSHA1);
+         toSHA1_MD5(word, 1, tempMD5);
+
+//        printf("\t Done SHA1\n");
+        fflush(stdout);
+
+    // SHA1 Index  - right most 9 bits.
+    int sha1Bits = (tempSHA1[SHA_DIGEST_LENGTH - 2] & 1)* 256
+                                +  (unsigned int)(tempSHA1[SHA_DIGEST_LENGTH - 1]);
+
+    // MD5 Index  - right most 9 bits.
+    int md5Bits = (tempMD5[MD5_DIGEST_LENGTH - 2] & 1)* 256
+                                +  (unsigned int)(tempMD5[MD5_DIGEST_LENGTH - 1]) ;
+
+
+  //      printf("\t minus 9 rightmost \n");
+        fflush(stdout);
+
+    // Push to left side
+    sha1Bits += 512;
+    int numSha1Chars = sha1Bits / 8;
+    int numMd5Chars = md5Bits / 8;
+
+    int sha1WithoutChars = sha1Bits % 8;
+    int md5WithoutChars = md5Bits % 8;
+
+    bitVector[127 - numSha1Chars] |= (0x01 << (sha1WithoutChars));
+    printf("SHA1 : %d\n", sha1Bits);
+
+
+    // set the hex equivalent bits of md5 and sha1 indices.
+    bitVector[127 - numMd5Chars] |= (0x01 << (md5WithoutChars));
+    printf("MD5 : %d\n", md5Bits);
+
+    //    printf("________ END _________\n");
 }
+
 
 void populateIndexes(struct FileMetadata f,unsigned int gfn)
 {
@@ -303,6 +366,10 @@ void writeMetadataToFile(struct FileMetadata fMetadata,int globalfNo)
 	i!=fMetadata.keywords.end();
 	i++)
 		fprintf(fptr,"%s ",(*i).c_str());
+
+	fprintf(fptr,"%s","\nBit-vector=");
+	for(int i=0;i<128;i++)
+		fprintf(fptr, "%02x", fMetadata.bitVector[i]);
 		
 	fclose(fptr);
 }

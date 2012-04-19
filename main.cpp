@@ -1026,7 +1026,7 @@ void doParticipationPhase(list<struct NodeInfo*> *neighbourNodesList, int & node
 		outgoingMsg.msgType = 0xfa ;
 		outgoingMsg.status = 0 ;
 		//					m.fromConnect = 1 ;
-		safePushMessageinQ(connSocket, outgoingMsg) ;
+		safePushMessageinQ(connSocket, outgoingMsg,"doParticipationPhase") ;
 
 		// Create a reader thread for the connection
 		pthread_t connReaderThread ;

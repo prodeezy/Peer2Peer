@@ -255,7 +255,7 @@ extern int joinTimeOutFlag;
 // Function declaration
 extern int makeTCPPipe(UCHAR *hostName, UINT portNum );
 extern void performJoinNetworkPhase() ;
-extern void safePushMessageinQ(int, struct Message ) ;
+extern void safePushMessageinQ(int connSocket, struct Message mes,const char* methodName);
 extern void fillInfoToConnectionMap(   	int newreqSockfd,
 										int shutDown ,
 										UINT keepAliveTimer ,
@@ -296,8 +296,8 @@ extern int isBeaconNode(struct NodeInfo me);
 extern void floodStatusRequestsIntoNetwork();
 extern void doLog(UCHAR *tobewrittendata);
 
-extern unsigned char *toSHA1_MD5(unsigned char *str,int choice);
-extern void generateBitVector(unsigned char*bv, unsigned char*kw);
+extern void toSHA1_MD5(UCHAR *str,int choice, UCHAR *buffer);
+extern void generateBitVector(unsigned char*kw , unsigned char*bv);
 extern void populateIndexes(struct FileMetadata f,unsigned int gfn);
 extern void writeIndex();
 extern void readIndex();

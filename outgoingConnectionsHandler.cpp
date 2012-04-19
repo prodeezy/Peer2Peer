@@ -50,27 +50,120 @@ int makeTCPPipe(UCHAR *hostName, unsigned int portNum ){
 
 }
 
-string toStringMetaData(struct FileMetadata metadata) {
+
+string MetaDataToStr(struct FileMetadata metadata)
+{
+                string res ;
+                res.append("[metadata]\nFileName=") ;
+                res.append((char *)metadata.fName) ;
+                res.append("\nFileSize=") ;
+                int len = res.size() ;
+                res.resize(res.size()+16) ;
+
+
+                sprintf(&res[len], "%ld\n",  metadata.fSize);
+                res.resize(strlen(res.c_str())) ;
+                res.append("SHA1=") ;
+                len = res.size() ;
+                res.resize(len+40) ;
+//printf("\n\n");               
+                for(int i=0;i<20;i++)
+                {
+                        sprintf(&res[len+i*2], "%02x", metadata.SHA1[i]);
+                        //printf("%02x", metadata.sha1[i]);
+                }
+
+//printf("\n\n");
+                res.append("\nNonce=") ;
+                len = res.size() ;
+                res.resize(len+40) ;
+                for(int i=0;i<20;i++) 
+                        sprintf(&res[len+i*2], "%02x", metadata.NONCE[i]);
+                                
+                res.append("\nKeywords=") ;
+                len = res.size() ;
+                for (list<string >::iterator it = metadata.keywords.begin(); it != metadata.keywords.end(); ++it){
+                        res.append((*it)) ;
+                        res.append(" ") ;
+                }
+                res.resize(res.size() -1) ;
+
+                res.append("\nBit-vector=") ;
+                len = res.size() ;
+                res.resize(len+256) ;
+                for(int i=0;i<128;i++)
+                        sprintf(&res[len+i*2], "%02x", metadata.bitVector[i]);
+                res.resize(res.size()+1) ;
+                res[len+256] = '\0' ;
+//              res[len+257] = '\0' ;
+                len = len +257 ;
+
+                return res ;
+                //              strncpy((char *)str, res.c_str(), len) ;
+
+ }
+
+ string toStringMetaData(struct FileMetadata metadata) {
 
 	string strMetadata;
 
 	strMetadata.append("[metadata]");
-	strMetadata.append("\nFileName=");		strMetadata.append((char*)metadata.fName);
+	strMetadata.append("\nFileName=");	
+	strMetadata.append((char *)metadata.fName);
 
-	int strLen = strMetadata.length();
-	sprintf(&strMetadata[strLen], "%d", metadata.fSize);
+	strMetadata.append("\nFileSize=");
+	int strLen = strMetadata.size();
+	strMetadata.resize(strLen+4) ;
+//	sprintf(&strMetadata[strLen], "%d", metadata.fSize);
 
-	//strMetadata.append("\nFileSize=");		strMetadata.append(metadata.fSize);
-	//strMetadata.append("\nSHA1=");			strMetadata.append(metadata.SHA1);
+	
+    sprintf(&strMetadata[strLen], "%d\n",  metadata.fSize);
+    strMetadata.resize(strlen(strMetadata.c_str())) ;
+				
+		printf("[Writer] metadata str ........ %s", strMetadata.c_str());
+/****
+	//		strMetadata.append(metadata.fSize);
+	strMetadata.append("\nSHA1=");	//		strMetadata.append(metadata.SHA1);
 	strLen = strMetadata.length();
 	strMetadata.resize(strLen+20) ;
 	memcpy(&strMetadata[strLen], metadata.SHA1, 20);
+	
+		printf("[Writer] metadata str ........ %s", strMetadata.c_str());
 
-	//strMetadata.append("\nNonce=");			strMetadata.append(metadata.NONCE);
+	
+	strMetadata.append("\nNonce=");			//strMetadata.append(metadata.NONCE);
 	strLen = strMetadata.length();
 	strMetadata.resize(strLen+20) ;
 	memcpy(&strMetadata[strLen], metadata.NONCE, 20);
+****/
 
+                strMetadata.append("SHA1=") ;
+                strLen = strMetadata.size() ;
+                strMetadata.resize(strLen+40) ;
+//printf("\n\n");               
+                for(int i=0;i<20;i++)
+                {
+                        sprintf(&strMetadata[strLen+i*2], "%02x", metadata.SHA1[i]);
+                        //printf("%02x", metadata.sha1[i]);
+                }
+
+//printf("\n\n");
+                strMetadata.append("\nNonce=") ;
+                strLen = strMetadata.size() ;
+                strMetadata.resize(strLen+40) ;
+                for(int i=0;i<20;i++) 
+                        sprintf(&strMetadata[strLen+i*2], "%02x", metadata.NONCE[i]);
+                                
+                strMetadata.append("\nKeywords=") ;
+                strLen = strMetadata.size() ;
+                for (list<string >::iterator it = metadata.keywords.begin(); it != metadata.keywords.end(); ++it){
+                        strMetadata.append((*it)) ;
+                        strMetadata.append(" ") ;
+                }
+                strMetadata.resize(strMetadata.size() -1) ;
+
+		printf("[Writer] metadata str ........ %s", strMetadata.c_str());
+/**
 	strMetadata.append("\nKeywords=");
 	list<string> keywordList = metadata.keywords;
 	for(list<string>::iterator iter=keywordList.begin(); iter!=keywordList.end(); iter++) {
@@ -81,11 +174,16 @@ string toStringMetaData(struct FileMetadata metadata) {
 		}
 		iter--;
 	}
+	**/
 	strMetadata.append("\nBit-vector=");
+	
 	strLen = strMetadata.length();
 	strMetadata.resize(strLen+128);
 	memcpy(&strMetadata[strLen], metadata.bitVector, 128);
+	
+	printf("[Writer] metadata str ........ %s", strMetadata.c_str());
 
+	return strMetadata;
 }
 
 /**
@@ -95,12 +193,18 @@ string toStringMetaData(struct FileMetadata metadata) {
  **/
 void fireSTORERequest(struct FileMetadata fileMetadata, char *fileName) {
 
-	printf("[Writer] Send STORE to neighbours, fileName:%s\n", fileName);
 
 	string strMetaData = toStringMetaData(fileMetadata);
 	int metadataLen = strMetaData.length();
 	int fileNameLength = strlen(fileName);
 
+	printf("[Writer] FIRE=> STORE to neighbours, fileName:%s, \n", fileName);
+	printf("[Writer] \t metadataLen:%d , strMetaLen:%d , strMetadata : %s\n", metadataLen, strMetaData.length(), strMetaData.c_str());
+	printf(" === Bit Vector ===\n");
+	for(int i=0;i<128;i++)
+		printf("%02x", fileMetadata.bitVector[i]);
+	printf("\n");
+	
 	struct CachePacket packet;
 	packet.msgLifetimeInCache = metadata->msgLifeTime;
 	packet.status=0;
@@ -151,7 +255,8 @@ void fireSTORERequest(struct FileMetadata fileMetadata, char *fileName) {
 				msg.fileNameLength = fileNameLength+1;
 				msg.metadatLen = metadataLen+1;
 
-				safePushMessageinQ(connSocket , msg);
+				printf("[STORE] metadataLen=%d\n", metadataLen);
+				safePushMessageinQ(connSocket , msg,"fireSTORERequest");
 			}
 		}
 
@@ -166,7 +271,7 @@ void *connectionWriterThread(void *args) {
 	struct Message outgoingMsg ;
 	struct stat st ;
 	UCHAR header[HEADER_SIZE] ;
-
+	MEMSET_ZERO(header,HEADER_SIZE);
 	long connSocket = (long)args ;
 
 	while(!globalShutdownToggle){
@@ -181,7 +286,8 @@ void *connectionWriterThread(void *args) {
 			msgQSize = CONN_SOCKET_MSG_Q(connSocket).size();
 		LOCK_OFF(&connectionMapLock) ;
 
-		if(isConnectionShutting) {
+		if(isConnectionShutting) 
+		{
 
 			////printf("[Writer-%d]\tShutdown connection [%d] break from connection writer thread\n",connSocket, connSocket);
 			break;
@@ -282,7 +388,8 @@ void *connectionWriterThread(void *args) {
 		}
 
 		printf("[Writer] Outgoing msg type switch case ...\n");
-		if (outgoingMsg.msgType == HELLO_REQ){
+		if (outgoingMsg.msgType == HELLO_REQ)
+		{
 
 			UCHAR host[256] ;
 			header[21] = 0x01 ;
@@ -306,7 +413,8 @@ void *connectionWriterThread(void *args) {
 			LOCK_OFF(&connectionMapLock) ;
 		}
 		// Sending JOIN Request
-		else if (outgoingMsg.msgType == JOIN_REQ){
+		else if (outgoingMsg.msgType == JOIN_REQ)
+		{
 
 			////printf("[Writer-%d]\tSending JOIN Request , status : %d\n", connSocket, outgoingMsg.status) ;
 			if (outgoingMsg.status == 1){
@@ -336,7 +444,8 @@ void *connectionWriterThread(void *args) {
 
 		}
 		// Sending Join Response
-		else if (outgoingMsg.msgType == 0xfb){
+		else if (outgoingMsg.msgType == 0xfb)
+		{
 
 			//originated from somewhere else, just need to forward the message
 			if (outgoingMsg.status == 1){
@@ -372,7 +481,8 @@ void *connectionWriterThread(void *args) {
 			header[22] = 0x00 ;
 			memcpy((char *)&header[23], &(bufferLength), 4) ;
 		}
-		else if (outgoingMsg.msgType == KEEPALIVE){
+		else if (outgoingMsg.msgType == KEEPALIVE)
+		{
 			// Keepalive request being sent
 
 			bufferLength = 0;
@@ -388,7 +498,8 @@ void *connectionWriterThread(void *args) {
 			//printf("[Writer-%d]\t Sending KeepAlive request from : %d\n", (int)connSocket, (int)connSocket) ;
 		}
 		// Status Message request
-		else if (outgoingMsg.msgType == STATUS_REQ){
+		else if (outgoingMsg.msgType == STATUS_REQ)
+		{
 
 			printf("[Writer] Sending STATUS REQ to %d\n" , connSocket);
 
@@ -415,7 +526,8 @@ void *connectionWriterThread(void *args) {
 			memcpy((char *)header + 21, &(outgoingMsg.ttl), 1) ;
 
 
-		}else if (outgoingMsg.msgType == NOTIFY)
+		}
+		else if (outgoingMsg.msgType == NOTIFY)
 		{
 
 			buffer = (UCHAR *)malloc(1) ;
@@ -429,7 +541,8 @@ void *connectionWriterThread(void *args) {
 			memcpy((char *)(header + 23), &(bufferLength), 4) ;
 
 		}
-		else if (outgoingMsg.msgType == STATUS_RSP){
+		else if (outgoingMsg.msgType == STATUS_RSP)
+		{
 
 			printf("[Writer] Sending STATUS RESPONSE to %d\n" , connSocket);
 			if (outgoingMsg.status == 1){
@@ -503,15 +616,21 @@ void *connectionWriterThread(void *args) {
 			memcpy((char *) ( header + 23), &(bufferLength), 4) ;
 			memcpy((char *) ( header + 21), &(outgoingMsg.ttl), 1) ;
 
-		} else if (outgoingMsg.msgType == STORE_REQ){
+		} 
+		else if (outgoingMsg.msgType == STORE_REQ)
+		{
 
-
+			printf("[Writer] sending STORE REQUEST\n");
 			// check if file exists
+			
+			header[0] = STORE_REQ;
+			header[22] = 0x00;			
+			
 			char *fileName = (char *)outgoingMsg.fileName;
 			fileRef = fopen(fileName, "rb");
 			if(fileRef == NULL) {
 
-				printf("[Writer]File to store could not be opened\n");
+				printf("[Writer]  File to store could not be opened\n");
 				//doLog((UCHAR *)"//File to store could not be opened\n");
 				continue;
 			}
@@ -520,7 +639,7 @@ void *connectionWriterThread(void *args) {
 
 			if(outgoingMsg.status != 1) {
 				// originated here
-
+				printf("[Writer] Sending STORE ... Originated here , status:%d \n", outgoingMsg.status);
 				// write metadata length
 				bufferLength = outgoingMsg.metadatLen + 4;
 				uint32_t metadataLen = outgoingMsg.metadatLen;
@@ -535,21 +654,28 @@ void *connectionWriterThread(void *args) {
 				bufferLength += fileStat.st_size;
 
 
-			} else {
+			} 
+			else 
+			{
 				// forwarding the message, buffer was already filled by someone
+				printf("[Writer] Sending STORE ... Forwarding  , status:%d \n", outgoingMsg.status);
 
 				bufferLength = outgoingMsg.dataLen ;
 		        buffer = outgoingMsg.buffer ;
 
 		        stat(fileName, &fileStat) ;
-		        bufferLength += fileStat.st_size ;
-				// special status for writing FILE on network
+		        // special status for writing FILE on network
 				outgoingMsg.status = 3;
+				bufferLength += fileStat.st_size ;			
 
 			}
+			
+			memcpy((char *) &header[21], &(outgoingMsg.ttl), 1);
+			memcpy((char *) &header[23], &(bufferLength), 4);
+			
+			printf("[Writer] Sending Store...  just set header, metadataLen:%d, totalDataLen:%d\n", outgoingMsg.metadatLen, bufferLength);
+			
 		}
-
-
 
 		printf("[Writer] .... reset keepalive\n");
 		//KeepAlive message sending
@@ -562,7 +688,8 @@ void *connectionWriterThread(void *args) {
 		}
 
 
-		if (ConnectionMap[connSocket].shutDown) {
+		if (ConnectionMap[connSocket].shutDown)
+		{
 
 			printf("[Writer] shutdown BREAK\n");
 			printf("[Writer] LOCK_OFF(%d)\n",connSocket);
@@ -578,9 +705,10 @@ void *connectionWriterThread(void *args) {
 
 		int return_code = 0 ;
 
-		//printf("[Writer] ... write header\n");
+		printf("[Writer] \t... Write header, msgType:%02x \n", header[0]);
 		return_code = (int)write(connSocket, header, HEADER_SIZE) ;
-		if (return_code != HEADER_SIZE){
+		if (return_code != HEADER_SIZE)
+		{
 			fprintf(stderr, "Socket Write Error") ;
 		}
 
@@ -590,37 +718,43 @@ void *connectionWriterThread(void *args) {
 		if(outgoingMsg.status == 3){
 
 			// FILE data is chunked
-
+			
+			printf("[Writer] \tSending STORE ... metaLen + metaData = %d\n", (bufferLength - st.st_size));
 			write(connSocket, buffer, bufferLength - st.st_size) ;
 			UCHAR fileChunk[8192] ;
 			// read the content of the file and write on the socket
 			//while(!feof(fp)){
 
-
+			printf("[Writer] \tSending STORE ... CHUNKING , status:%d \n", outgoingMsg.status);
+			int totalBytes = 0;
 			for(;;) {
 
 				MEMSET_ZERO(fileChunk, 8192) ;
 
 				int numBytes = fread(fileChunk, 1, 8192, fileRef) ;
+				totalBytes += numBytes;
 				if(numBytes == 0)
 					break;
 				write(connSocket, fileChunk, numBytes) ;
+				printf("[Writer]\t..... Writing the [%s] file, %d bytes wrote\n", fileChunk, numBytes);
 			}
 
 			fclose(fileRef);
-			printf("[Writer-%d]\t\tWrote CHUNKED %d bytes of buffer\n", connSocket, return_code);
+			printf("[Writer-%d]\tWrote CHUNKED %d bytes of buffer\n", connSocket, totalBytes);
 		}
-		else{
+		else
+		{
 
 			//printf("[Writer] ... write buffer\n");
 			return_code = (int)write(connSocket, buffer, bufferLength) ;
-			if (return_code != (int)bufferLength){
+			if (return_code != (int)bufferLength)
+			{
 				fprintf(stderr, "[Writer]\t Failed to write buffer bytes") ;
 			}
 			printf("[Writer-%d]\t\tWrote %d bytes of buffer\n", connSocket, return_code);
 		}
 
-
+		
 		//logging the message sent from this node or forwarded from this node
 		UCHAR *logEntryRecord = NULL;
 /****
@@ -651,7 +785,7 @@ void *connectionWriterThread(void *args) {
 			free(buffer) ;
 		}
 
-		//printf("[Writer-%d]\t ...... End of writer loop\n", connSocket);
+		printf("[Writer-%d]\t ...... End of writer loop\n", connSocket);
 
 		sleep(1);
 
@@ -969,7 +1103,7 @@ void floodStatusRequestsIntoNetwork(){
 				statusMsg.uoid[i] = uoid[i] ;
 
 			printf("[Status]\t Add to queue to be sent, ttl=%d\n", statusMsg.ttl);
-			safePushMessageinQ((*it).second, statusMsg) ;
+			safePushMessageinQ((*it).second, statusMsg,"floodStatusRequestsIntoNetwork") ;
 		}
 
 	LOCK_OFF(&currentNeighboursLock) ;
@@ -987,7 +1121,7 @@ void createJReqMsqAndPutInPushQ(int & beaconConnectSocket)
 	joinRequestMsg.msgType = 0xfc;
 	joinRequestMsg.status = 0;
 	joinRequestMsg.ttl = metadata->ttl;
-	safePushMessageinQ(beaconConnectSocket, joinRequestMsg);
+	safePushMessageinQ(beaconConnectSocket, joinRequestMsg,"createJReqMsqAndPutInPushQ");
 }
 
 /**

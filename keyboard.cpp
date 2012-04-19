@@ -222,9 +222,11 @@ void *keyboard_thread(void *dummy)
 			printf("here3.5\n");
 			fflush(stdout);
 			for(list<string >::iterator it = tempMetadata.keywords.begin(); it != tempMetadata.keywords.end(); ++it)
-				generateBitVector(tempMetadata.bitVector, (unsigned char *)(*it).c_str());
-			
-			
+				generateBitVector((unsigned char *)(*it).c_str() , tempMetadata.bitVector);
+			printf(" === Bit Vector ===\n");
+			for(int i=0;i<128;i++)
+				printf("%02x", tempMetadata.bitVector[i]);
+			printf("\n");
 			printf("here4\n");
 			fflush(stdout);
 			unsigned char psswdfName[256];
@@ -240,7 +242,11 @@ void *keyboard_thread(void *dummy)
 			
 			printf("here5\n");
 			fflush(stdout);
-			strncpy((char*)tempMetadata.NONCE,(char*)toSHA1_MD5(psswd,0),20);
+			UCHAR psswdSHA1[20];
+			MEMSET_ZERO(psswdSHA1, 20);
+			//void toSHA1_MD5(UCHAR *str,int choice, UCHAR *buffer)
+			toSHA1_MD5(psswd,0, psswdSHA1);
+			strncpy((char*)tempMetadata.NONCE, (char*)psswdSHA1, 20);
 			writeDataToFile(tempMetadata,globalfNumber);
 			writeMetadataToFile(tempMetadata,globalfNumber);
 			populateIndexes(tempMetadata,globalfNumber);

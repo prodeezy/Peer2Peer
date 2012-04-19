@@ -9,8 +9,22 @@ using namespace std;
  **/
 
 // Closes connection with a neighbour
-void destroyConnectionAndCleanup(int reqSockfd){
-
+void destroyConnectionAndCleanup(int reqSockfd)
+{
+	/*
+	LOCK_ON(&currentNeighboursLock) ;
+	NEIGHBOUR_MAP_ITERATOR entry = currentNeighbours.begin();
+	for (  ;   entry != currentNeighbours.end() ;  ++entry)
+	{
+		if((*entry).second == reqSockfd)
+			break;
+	}
+	if(entry == currentNeighbours.end())
+	{
+		printf("In destroyConnectionAndCleanup and reqsockfd was not found,exit this method\n");
+		return;
+	}
+	*/
 	//printf("[Reader-%d]\t Close connection\n", reqSockfd);
 
 	float fNothing = 10.0f;
@@ -37,25 +51,30 @@ void destroyConnectionAndCleanup(int reqSockfd){
 	}
 	// Set the shurdown flag for this connection
 	close(reqSockfd) ;
-
+	//printf("[destroyConnectionAndCleanup]\t closing socket:%d\n",reqSockfd);
 	//printf("[Reader]\tThis socket has been closed: %d\n", reqSockfd);
 
 	// Todo: Perform check sequence when a neighbour is let go
 }
 
-void safePushMessageinQ(int connSocket, struct Message mes){
+void safePushMessageinQ(int connSocket, struct Message mes,const char* methodName)
+{
 
+	if(mes.msgType==0xFB || mes.msgType==0xFA ||mes.msgType==0xF7||mes.msgType==0xF8||mes.msgType==0xF5||mes.msgType==0xF6||mes.msgType==0x00||mes.msgType==0xAC||mes.msgType==0xAB||mes.msgType==0xCC||mes.msgType==0xDC||mes.msgType==0xDB)
+	{
+		LOCK_ON(&ConnectionMap[connSocket].mQLock) ;
+			printf("[Reader] LOCK_ON(%d) push\n",connSocket);
 
-	LOCK_ON(&ConnectionMap[connSocket].mQLock) ;
-		printf("[Reader] LOCK_ON(%d) push\n",connSocket);
+			(ConnectionMap[connSocket]).MessageQ.push_back(mes) ;
 
-		(ConnectionMap[connSocket]).MessageQ.push_back(mes) ;
+		LOCK_OFF(&ConnectionMap[connSocket].mQLock) ;
 
-	LOCK_OFF(&ConnectionMap[connSocket].mQLock) ;
+		printf("[Reader] LOCK_OFF(%d) push\n",connSocket);
 
-	printf("[Reader] LOCK_OFF(%d) push\n",connSocket);
-
-	printf("\t\tPushed message into Q for socket:%d , size:%d\n", connSocket, ConnectionMap[connSocket].MessageQ.size());
+		printf("[%s] \tPushed message into Q for socket:%d , size:%d\n", methodName, connSocket, ConnectionMap[connSocket].MessageQ.size());
+	}
+	else
+		printf("[READER]Empty message sent by:%s\n",methodName);
 }
 
 void deleteFromNeighboursAndCloseConnection(int reqSockfd)
@@ -78,7 +97,8 @@ void deleteFromNeighboursAndCloseConnection(int reqSockfd)
 		}
 
 		NEIGHBOUR_MAP_ITERATOR entry = currentNeighbours.begin();
-		for (  ;   entry != currentNeighbours.end() && !doBreak   ;  ++entry){
+		for (  ;   entry != currentNeighbours.end() && !doBreak   ;  ++entry)
+		{
 
 
 			if(!doNothing) {
@@ -238,7 +258,7 @@ void floodStatusOnNetwork(int & reqSockfd, uint8_t ttl, unsigned int & dataLen, 
 			MEMSET_ZERO(floodedStatusMsg.uoid, SHA_DIGEST_LENGTH) ;
 			memcpy(floodedStatusMsg.uoid, uo_id, SHA_DIGEST_LENGTH);
 
-			safePushMessageinQ(neighSocket, floodedStatusMsg);
+			safePushMessageinQ(neighSocket, floodedStatusMsg,"floodStatusOnNetwork");
 			/**
 			LOCK_ON(&ConnectionMap[neighSocket].mQLock) ;
 				ConnectionMap[neighSocket].MessageQ.push_back(floodedStatusMsg) ;
@@ -730,9 +750,12 @@ void handleRequestByCase(int connSocketFd,
 
 		deleteFromNeighboursAndCloseConnection(connSocketFd);
 
-	} else if(msgType == STORE_REQ) {
+	}
+	else if(msgType == STORE_REQ) 
+	{
 
 		// Check if packet was already received
+		printf("[Reader] STORE_REQ was received\n");
 		string uoidStr = TO_STRING((const char *)uoid , SHA_DIGEST_LENGTH);
 		LOCK_ON(&msgCacheLock);
 		if(MessageCache.find(uoidStr) == MessageCache.end()) {
@@ -765,7 +788,9 @@ void handleRequestByCase(int connSocketFd,
 
 					// update the LRU
 
-				} else {
+				} 
+				else 
+				{
 
 					int fileNumber = 1;
 					// fileNumber = incfNumber();  //update global file number
@@ -786,13 +811,13 @@ void handleRequestByCase(int connSocketFd,
 						int closeRet = fclose(dataFile);
 						if(closeRet != 0) {
 
-							printf("[Reader] Closing data file FAILED! Try emptying space!!");
+							printf("[Reader] Closing data file FAILED! Try emptying space!!\n");
 
 						} else {
 
-							// writeMetadataToFile(fileMetadata, fileNumber);
+							writeMetadataToFile(fileMetadata, fileNumber);
 
-							// populateIndices(fileMetadata.fileName , fileNumber);
+							populateIndexes(fileMetadata , fileNumber);
 						}
 					}
 				}
@@ -803,40 +828,49 @@ void handleRequestByCase(int connSocketFd,
 					NEIGHBOUR_MAP_ITERATOR iter = currentNeighbours.begin() ;
 					for(; iter!=currentNeighbours.end(); iter++) {
 
-						struct Message storeMessage;
-						storeMessage.dataLen=  dataLen;
+						if((*iter).second != connSocketFd ) {
+						
+							//if((double) drand48() > metadata->neighborStoreProb)
+								//continue;
+								
+							printf("[Reader]\t Send to neighbour :%d\n", (*iter).second);	
+							struct Message storeMessage;
+							storeMessage.dataLen=  dataLen;
 
 
-						// set file name
-						int tmpFNameLength = strlen(tempFileName);
-						strncpy((char *)storeMessage.fileName , tempFileName, tmpFNameLength);
-						storeMessage.fileName[ tmpFNameLength ] = '\0';
+							// set file name
+							int tmpFNameLength = strlen(tempFileName);
+							strncpy((char *)storeMessage.fileName , tempFileName, tmpFNameLength);
+							storeMessage.fileName[ tmpFNameLength ] = '\0';
 
-						if(ttl < metadata->ttl)
-							storeMessage.ttl= ttl;
-						else
-							storeMessage.ttl= metadata->ttl;
+							if(ttl < metadata->ttl)
+								storeMessage.ttl= ttl;
+							else
+								storeMessage.ttl= metadata->ttl;
 
-						// message type and uoid
-						storeMessage.msgType = STORE_REQ;
-						MEMSET_ZERO(storeMessage.uoid, SHA_DIGEST_LENGTH);
-						memcpy(storeMessage.uoid , uoid, SHA_DIGEST_LENGTH);
-
-
-						storeMessage.buffer = (UCHAR *)malloc(dataLen);
-						MEMSET_ZERO(storeMessage.buffer, dataLen);
-						memcpy(storeMessage.buffer , buffer, dataLen);
+							// message type and uoid
+							storeMessage.msgType = STORE_REQ;
+							MEMSET_ZERO(storeMessage.uoid, SHA_DIGEST_LENGTH);
+							memcpy(storeMessage.uoid , uoid, SHA_DIGEST_LENGTH);
 
 
-						// enqueue to be sent to neighbour
-						safePushMessageinQ(connSocketFd, storeMessage);
+							storeMessage.buffer = (UCHAR *)malloc(dataLen);
+							MEMSET_ZERO(storeMessage.buffer, dataLen);
+							memcpy(storeMessage.buffer , buffer, dataLen);
+
+
+							// enqueue to be sent to neighbour
+							safePushMessageinQ(connSocketFd, storeMessage,"Reader");
+						} else {
+							printf("[Reader] \t Not sending to SELF\n");
+						}
 					}
 
 				LOCK_OFF(&currentNeighboursLock);
 
 			} else {
 
-				printf("[Reader] Skipping STORE local\n");
+				printf("[Reader] STORE request already present in cache, IGNORE\n");
 			}
 
 		} else {
@@ -844,6 +878,7 @@ void handleRequestByCase(int connSocketFd,
 			LOCK_OFF(&msgCacheLock);
 			return;
 		}
+		printf("Store req handling done!!!\n");
 	}
 
 	resetKeepAliveTimeout(connSocketFd) ;
@@ -906,15 +941,17 @@ void *connectionReaderThread(void *args) {
 
 	long connSocket  =  (long) args;
 
-	for(  ;  !ConnectionMap[connSocket].shutDown ;  ) {
+	for(  ;  !ConnectionMap[connSocket].shutDown ;  )
+	{
 
 
-//		LOCK_OFF(&ConnectionMap[connSocket].mQLock);
+		//LOCK_OFF(&ConnectionMap[connSocket].mQLock);
 
 		bool doBreak = false;
 		doBreak = checkIfReaderLoopShouldBreak (connSocket, doBreak) ;
-		if(doBreak) {
-
+		if(doBreak)
+		{
+			printf("[Reader]**********Going to do break*********************\n");
 			deleteFromNeighboursAndCloseConnection (connSocket);
 			break;
 		}
@@ -923,7 +960,8 @@ void *connectionReaderThread(void *args) {
 		// read header
 		MEMSET_ZERO(header, HEADER_SIZE);
 		int bytesRead = (int)read(connSocket, header, HEADER_SIZE);
-
+		
+		printf("[Reader] ======= Got NEW message, Reading HEADER ..Number of bytes read:%d\n",bytesRead);
 		uint8_t messageType = 0;
 		uint8_t ttl = 0;
 		uint32_t bufferDataLength = 0;
@@ -936,39 +974,46 @@ void *connectionReaderThread(void *args) {
 		memcpy(uoid , 		 		header + 1,  SHA_DIGEST_LENGTH);
 		memcpy(&ttl,  		 		header + 21, 1);
 		memcpy(&bufferDataLength,  	header + 23, 4);
-
-		if(bytesRead != HEADER_SIZE) {
-
+		
+		printf("[Reader] \t Read HEADER bytes:%d , Message type :%02x , data length:%d ..... %s\n", bytesRead, messageType, bufferDataLength, header);
+		if(bytesRead != HEADER_SIZE) 
+		{
+			printf("[Reader] \tcouldn't read HEADER_SIZE , close and break\n");
 			deleteFromNeighboursAndCloseConnection (connSocket);
 			break;
 		}
 
 		doBreak = checkIfReaderLoopShouldBreak (connSocket, doBreak) ;
-		if(doBreak) {
-
+		if(doBreak) 
+		{
+			printf("[Reader] \tLoop should break\n");
 			deleteFromNeighboursAndCloseConnection (connSocket);
 			break;
 		}
 
 		char tempFileName[256];
-		if(messageType == STORE_REQ) {
+		
+		if(messageType == STORE_REQ) 
+		{
 
 			// read metadata length
+			printf("[Reader] \tStore_req caught\n");
 			uint32_t metadataLen ;
 			int retCode = read(connSocket, &metadataLen, 4);
-			printf("[Reader] Store ... metadata len:%d", metadataLen);
+			printf("[Reader] \tStore ... metadata len:%d, numBytes:4\n", metadataLen);
 
 			// read metadata
 			body = (UCHAR *)malloc(sizeof(UCHAR) * (metadataLen+1));
 			retCode = read(connSocket, body, metadataLen);
 			body[metadataLen] = '\0';
-
+			printf("[Reader] \tStore ... Read metadata : %s\n", body);
+			
 			// create file to store content
 			char fNameSuffix[L_tmpnam];// = "1.data";
 
 			tmpnam(fNameSuffix);
-			sprintf(tempFileName, "%s/file/%s.tmp", metadata->currWorkingDir, tempFileName) ;
-			printf("[Reader] Store ... tempFileName : %s\n", tempFileName);
+			sprintf(tempFileName, "%s/file%s.tmp", metadata->currWorkingDir, fNameSuffix) ;
+			printf("[Reader] \tStore ... tempFileName : %s\n", tempFileName);
 
 			// pull data chunk-wise
 
@@ -980,11 +1025,14 @@ void *connectionReaderThread(void *args) {
 			for ( ; totalBytesRead < bytesToBeRead ; ) {
 
 				int readBytes = read(connSocket, dataChunk, 8192);
+				printf("[Reader]\t ... read %d bytes , data: %s\n", readBytes, dataChunk);
 				fwrite(dataChunk,	1,   readBytes, tempDataFile);
 				totalBytesRead += readBytes;
-				printf("[Reader]\t ... read %d bytes.\n", readBytes);
+				
 			}
-
+			printf("[Reader] \tStore ... Read data bytes : %s\n", totalBytesRead);
+			fflush(stdout);
+			
 			fflush(tempDataFile);
 			fclose(tempDataFile);
 
@@ -993,28 +1041,30 @@ void *connectionReaderThread(void *args) {
 			bytesRead = metadataLen + 24;
 			bufferDataLength = metadataLen + 24;
 
-		} else {
-
+		}
+		else 
+		{
 			// read message body
 			body = (UCHAR *)malloc(sizeof(UCHAR)*(bufferDataLength+1)) ;
 			bytesRead = (int)read(connSocket, body, bufferDataLength);
 			body[bufferDataLength] = '\0' ;
 		}
 
-		if(bytesRead != bufferDataLength) {
-
+		if(bytesRead != bufferDataLength) 
+		{
+			printf("Complete data couldnt be read\n");
 			deleteFromNeighboursAndCloseConnection (connSocket);
 			break;
 		}
+		
 		doBreak = checkIfReaderLoopShouldBreak (connSocket, doBreak) ;
-
-		if(doBreak) {
-
+		if(doBreak) 
+		{
 			deleteFromNeighboursAndCloseConnection (connSocket);
 			break;
 		}
 
-		printf("[Reader] handle request case by case");
+		printf("[Reader] \thandle request case by case\n");
 		// look at request and handle case by case
 		handleRequestByCase(connSocket,
 							messageType,

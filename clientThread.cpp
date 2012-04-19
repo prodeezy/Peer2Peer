@@ -26,7 +26,7 @@ int clientConnect(UCHAR *hostname,short int server_pt)
 
     if ((nSocket = socket(server_info->ai_family, server_info->ai_socktype,server_info->ai_protocol)) == -1)
 	{
-            perror("Client: socket");
+            perror("*****Client: socket");
             exit(0);
     }
     
@@ -39,7 +39,7 @@ int clientConnect(UCHAR *hostname,short int server_pt)
 
 void* clientThread(void *info)
 {
-
+	
 	struct NodeInfo node;
 	memset (&node,0,sizeof(node));
 	node =*((struct NodeInfo*)info);
@@ -68,7 +68,7 @@ void* clientThread(void *info)
 			r1 = clientConnect(node.hostname,node.portNo);
 			if(r1==-1)
 			{
-				//printf("//In clientThread: Connection to a port failed\n");
+				doLog((unsigned char*)"//In clientThread: Connection to a port failed\n");
 			}
 			else
 			{
@@ -76,13 +76,13 @@ void* clientThread(void *info)
 				struct ConnectionInfo ci;
 				int minit = pthread_mutex_init(&ci.mQLock, NULL) ;
 				if (minit != 0){
-					perror("Mutex initialization failed");
-					//writeLogEntry("//In server thread :Mutex initialization failed\n");
+					//perror("Mutex initialization failed");
+					doLog((unsigned char*)"//In server thread :Mutex initialization failed\n");
 				}
 				int cinit = pthread_cond_init(&ci.mQCv, NULL) ;
 				if (cinit != 0){
-					perror("CV initialization failed") ;
-					//writeLogEntry("//In server thread :CV initialization failed\n");
+					//perror("CV initialization failed") ;
+					doLog((unsigned char*)"//In server thread :CV initialization failed\n");
 				}
 				
 				ci.shutDown = 0 ;
@@ -99,8 +99,8 @@ void* clientThread(void *info)
 				
 				if((pthread_create(&rThread, NULL, connectionReaderThread , (void *)r1))!=0)
 				{
-					printf("//The connectionReaderThread couldnt be created in the server thread.\nHence the node will shutdown");
-					//writeLog("//The connectionReaderThread couldnt be created in the server thread.\nHence the node will shutdown");
+					//printf("//The connectionReaderThread couldnt be created in the server thread.\nHence the node will shutdown");
+					doLog((unsigned char*)"//The connectionReaderThread couldnt be created in the server thread.\nHence the node will shutdown");
 					exit(1);
 				}
 				
@@ -113,12 +113,12 @@ void* clientThread(void *info)
 				msg.msgType = 0xfa ;
 				msg.status = 0;
 				msg.fromConnect = 1;
-				safePushMessageinQ(r1, msg) ;
+				safePushMessageinQ(r1, msg,"client_thread") ;
 
 				if(pthread_create(&wThread, NULL, connectionWriterThread , (void *)r1)!=0)
 				{
-					printf("In clientThread: connectionWriterThread creation failed\n");
-					//writeLog("//The connectionWriterThread couldnt be created in the server thread.\nHence the node will shutdown");
+					//printf("In clientThread: connectionWriterThread creation failed\n");
+					doLog((unsigned char*)"//The connectionWriterThread couldnt be created in the server thread.\nHence the node will shutdown");
 					exit(1);
 				}
 
@@ -131,8 +131,8 @@ void* clientThread(void *info)
 				{
 					if((pthread_join((*i),&thread))!=0)
 					{
-						printf("In clientThread: join failed\n");
-						//writeLog("//In server_thread: Couldnt join the threads");
+						//printf("In clientThread: join failed\n");
+						doLog((unsigned char*)"//In server_thread: Couldnt join the threads");
 						exit(1);
 					}
 				}

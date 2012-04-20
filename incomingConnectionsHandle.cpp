@@ -675,16 +675,7 @@ void handleRequestByCase(int connSocketFd,
 		memcpy((unsigned short int *)&n.portNo, buffer + 22, 2) ;
 
 		//printf("[Reader] Received STATUS ... cache check \n" );
-		/**
-		printf("[Reader]\t ...... MessageCache ............");
-		for(CACHEPACKET_MAP::iterator = MessageCache.begin(); iterator!= MessageCache.end(); iterator++) {
 
-			string sUoid = (*iterator).first;
-			struct CachePacket pkt = (*iterator).second;
-			printf("[Reader]\t\tuoid=%s , Packet{sock=%d, status=%d}\n",
-					sUoid.c_str(), pkt.reqSockfd, pkt.status );
-		}
-		**/
 
 		if (MessageCache.find( TO_STRING((const char *)originalMsg_UOID , SHA_DIGEST_LENGTH)) != MessageCache.end()){
 
@@ -799,7 +790,19 @@ void handleRequestByCase(int connSocketFd,
 		string uoidStr = TO_STRING((const char *)uoid , SHA_DIGEST_LENGTH);
 		LOCK_ON(&msgCacheLock);
 
+
+
+		printf("[Reader]\t ...... MessageCache ............");
+		for(CACHEPACKET_MAP::iterator iter = MessageCache.begin(); iter!= MessageCache.end(); iter++) {
+
+			string sUoid = (*iter).first;
+			struct CachePacket pkt = (*iter).second;
+			printf("[Reader]\t\tuoid=%s , Packet{sock=%d, status=%d}\n",
+					        sUoid.c_str(), 	pkt.reqSockfd, 	  pkt.status );
+		}
+
 		printf("[Reader]\t lookup uoid:%s\n", uoidStr.c_str());
+
 		if(MessageCache.find(uoidStr) == MessageCache.end()) {
 
 			printf("[Reader] \t NEW Store request, couldn't find in MsgCache\n");

@@ -27,7 +27,7 @@
 #include <ctype.h>
 #include <map>
 #include <sys/stat.h>
-
+#include <fstream>
 
 #define HEADER_SIZE 								27
 #define SHA_DIGEST_LENGTH 							20
@@ -83,7 +83,8 @@ typedef list<struct JoinResponseInfo>					JOINRESPINFO_LIST;
 
 struct FileMetadata 
 {
-
+	
+	UCHAR fileID[20];
 	list<string> *keywords;
 	UCHAR bitVector[128];
 	UCHAR fName[256];
@@ -182,6 +183,8 @@ struct Message{
         int dataLen ;
         uint8_t statusType ;
         uint8_t errorCode;
+		unsigned char q_type;
+		UCHAR *query;
 };
 
 struct ConnectionInfo{
@@ -226,7 +229,7 @@ struct JoinResponseInfo{
 //Flags
 extern int keepAlivePid;
 extern UCHAR logFilePath[512];
-
+extern int countOfSearchRes;
 
 extern bool joinNetworkPhaseFlag;
 extern bool globalShutdownToggle;
@@ -248,12 +251,16 @@ extern int acceptProcessId;
 extern pthread_mutex_t getvalue;
 extern FileMetadata *fMetadata;
 //extern FILE *loggerRef = NULL;
+extern pthread_mutex_t searchMsgLock;
+extern pthread_mutex_t countOfSearchResLock;
 
 extern map<string, list<int> > BitVectorIndexMap;
 extern map<string, list<int> > FileNameIndexMap;
 extern map<string, list<int> > SHA1IndexMap;
 extern map<string, int> fileIDMap;
 extern list<int> cacheLRU;
+//extern map<string, int> fileIDMap;
+extern map<int, struct FileMetadata> fileDisplayIndexMap;
 
 // For timer thread
 extern int statusTimerFlag ;
@@ -262,6 +269,7 @@ extern pthread_cond_t statusMsgCV;
 extern int checkTimerFlag;
 extern int isSoftRestartEnabled;
 extern int joinTimeOutFlag;
+extern pthread_cond_t searchMsgCV;
 
 
 // Function declaration
@@ -314,8 +322,13 @@ extern void populateIndexes(struct FileMetadata f,unsigned int gfn);
 extern void writeIndex();
 extern void readIndex();
 extern int incfNumber();
-extern int covertToHex(unsigned char *str, int len);
 extern void writeMetadataToFile(struct FileMetadata fMetadata,int globalfNo);
 extern void writeDataToFile(struct FileMetadata fMetadata,int globalfNo);
 extern unsigned char* convertToHex(unsigned char *str, int len);
 extern void fireSTORERequest(struct FileMetadata fileMetadata, char *fileName);
+extern void initiateLocalFilenameSearch(unsigned char *fileToBeSearched);
+extern void initiateLocalSha1Search(unsigned char* hashvalue);
+extern void initiateLocalKeywordSearch(list <string> keywords);
+extern struct FileMetadata createFileMetadata(int fNo);
+extern void displayFileMetadata(struct FileMetadata fMetadata);
+extern void constructSearchMsg(UCHAR *dataForMsg,UCHAR type);

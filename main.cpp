@@ -33,6 +33,11 @@ map<string, list<int> > FileNameIndexMap;
 map<string, list<int> > SHA1IndexMap;
 map<string, int> fileIDMap;
 struct NodeInfo n;
+pthread_mutex_t searchMsgLock;
+pthread_cond_t searchMsgCV;
+pthread_mutex_t countOfSearchResLock;
+int countOfSearchRes=0;
+map<int, struct FileMetadata> fileDisplayIndexMap;
 
 
 
@@ -385,6 +390,22 @@ void initializeLocks()
 		//doLog((UCHAR *)"//CV initialization failed\n");
 	}
 
+	ret = pthread_mutex_init(&searchMsgLock, NULL) ;
+	if (ret != 0){
+		//perror("Mutex initialization failed") ;
+		//doLog((UCHAR *)"//Mutex initialization failed\n");
+	}
+	
+	ret = pthread_cond_init(&searchMsgCV, NULL) ;
+	if (ret != 0){
+		//perror("Mutex initialization failed") ;
+		//doLog((UCHAR *)"//Mutex initialization failed\n");
+	}
+
+	ret = pthread_mutex_init(&countOfSearchResLock, NULL) ;
+	if(ret != 0){
+		perror("Mutex initialization failed");
+	}
 }
 
 void condense(char* readline)

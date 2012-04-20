@@ -300,6 +300,13 @@ void *keyboard_thread(void *dummy)
 			printf("the value is:%s\n",value);
 			list <string> keyword_search;
 			string SToken((char*)value);
+			
+			//Clear the search parameters first.
+			fileDisplayIndexMap.clear();
+			LOCK_ON(&countOfSearchResLock);
+			countOfSearchRes=0;
+			LOCK_OFF(&countOfSearchResLock);
+			
 			if(!strcasecmp((char*)pattern,"keywords"))
 			{
 				printf("the keywords are:\n");
@@ -319,19 +326,30 @@ void *keyboard_thread(void *dummy)
 					count++;
 				}
 				printf("Call initiate keyword search method\n");
+				constructSearchMsg(value,0x03);
+				initiateLocalKeywordSearch(keyword_search);
+				//break;
 			}
 			
 			if(!strcasecmp((char*)pattern,"sha1hash"))
 			{
 				unsigned char* hash=convertToHex(value,20);
 				printf("Call initiate sha1 search method\n");
+				constructSearchMsg(value,0x02);
+				initiateLocalSha1Search(hash);
 			}
 			
 			if(!strcasecmp((char*)pattern,"filename"))
 			{
 				printf("Call initiate filename search method\n");
+				printf("Call initiate filename search method for filename=%s\n",value);
+				constructSearchMsg(value,0x01);
+				initiateLocalFilenameSearch(value);
 			}
-			//Use locks to prevent the search results from being displayed
+			//Use locks to prevent the keyboard from looping back-up
+			pthread_mutex_lock(&searchMsgLock) ;
+			pthread_cond_wait(&searchMsgCV, &searchMsgLock);
+			pthread_mutex_unlock(&searchMsgLock) ;
 		}
 	}
 

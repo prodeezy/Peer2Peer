@@ -92,6 +92,12 @@ void populateIndexes(struct FileMetadata f,unsigned int gfn)
 	BitVectorIndexMap[string((char*)f.bitVector)].push_back((int)gfn);
 	FileNameIndexMap[string((char*)f.fName)].push_back((int)gfn);
 	SHA1IndexMap[string((char*)f.SHA1)].push_back((int)gfn);
+	printf("The following has been pushed in the index with global file number:%d",gfn);
+	printf("The bit-vector=%s\n",(char*)f.bitVector);
+	printf("The file name=%s\n",(char*)f.fName);
+	printf("The SHA1=%s\n",(char*)f.SHA1);
+	
+	printf("The sizes are:%d %d %d",BitVectorIndexMap.size(),FileNameIndexMap.size(),SHA1IndexMap.size());
 }
 
 void writeIndex()
@@ -126,7 +132,7 @@ void writeIndex()
 		printf("File couldnt be opened\n");
 		exit(0);
 	}
-	for(map<string, list<int > >::iterator x=BitVectorIndexMap.begin();x!=BitVectorIndexMap.end();x++)
+	for(map<string, list<int > >::iterator x=FileNameIndexMap.begin();x!=FileNameIndexMap.end();x++)
 	{
 		fprintf(ptr,"%s",((*x).first).c_str());
 		for(list<int>:: iterator l=(*x).second.begin();l!=(*x).second.end();l++)
@@ -145,7 +151,7 @@ void writeIndex()
 		printf("File couldnt be opened\n");
 		exit(0);
 	}
-	for(map<string, list<int > >::iterator x=BitVectorIndexMap.begin();x!=BitVectorIndexMap.end();x++)
+	for(map<string, list<int > >::iterator x=SHA1IndexMap.begin();x!=SHA1IndexMap.end();x++)
 	{
 	
 		for(int i=0;i<20;i++)
@@ -189,7 +195,7 @@ void readIndex()
 		
 		strcpy (cstr, line.c_str());
 		pch = strtok (cstr," ");
-		unsigned char str[129];
+		unsigned char str[128];
 		strcpy((char*)tempbV,pch);
 		unsigned char *temp = (unsigned char *)convertToHex(tempbV, 128);
 		for(int i=0;i<128;i++)
@@ -330,9 +336,50 @@ int incfNumber()
 	return globalfNumber;
 }
 
+int hexchar2int(unsigned char hexchar) 
+{ 
+	switch (hexchar) 
+	{ 
+		case '0': return 0; 
+		case '1': return 1; 
+		case '2': return 2; 
+		case '3': return 3;
+		case '4': return 4;
+		case '5': return 5;
+		case '6': return 6;
+		case '7': return 7;
+		case '8': return 8;
+		case '9': return 9;
+		case 'a': return 10;
+		case 'b': return 11;
+		case 'c': return 12;
+		case 'd': return 13;
+		case 'e': return 14;
+		case 'f': return 15; 
+	} 
+} 
+
+unsigned char hexstring2bin(unsigned char hi_char, unsigned char lo_char) 
+{ 
+	int hi_value = 0; 
+	int lo_value = 0; 
+	hi_value = hexchar2int(hi_char); 
+	lo_value = hexchar2int(lo_char); 
+	return (unsigned char) ((hi_value * 16 + lo_value) & 0x0ff); 
+}
+
 unsigned char* convertToHex(unsigned char *str, int len)
 {
-}
+	UCHAR *out=(UCHAR*)malloc(sizeof(UCHAR)*len); 
+    for (int i=0; i < len; i++) 
+	{ 
+        unsigned char hi_char = str[i*2]; 
+        unsigned char lo_char = str[i*2+1]; 
+        /* convert 2 hexstring characters to 1 byte at a time */ 
+        out[i] = hexstring2bin(hi_char, lo_char); 
+    }
+	return out;
+} 
 
 void writeMetadataToFile(struct FileMetadata fMetadata,int globalfNo)
 {
@@ -394,6 +441,275 @@ void writeDataToFile(struct FileMetadata fMetadata,int globalfNo)
 	fclose(f2);
 }
 
+void initiateLocalFilenameSearch(unsigned char *fileToBeSearched)
+{
+	//list<int> fileIDs;
+	for(map<string, list<int > >::iterator x=FileNameIndexMap.begin();x!=FileNameIndexMap.end();x++)
+	{
+		if((strcasecmp(((*x).first.c_str()),(char*)fileToBeSearched))==0)
+		{
+			for (list<int >::iterator it = (*x).second.begin(); it != (*x).second.end(); ++it)
+			{
+				struct FileMetadata populatedFileMeta = createFileMetadata(*it);
+				pthread_mutex_lock(&countOfSearchResLock);
+				countOfSearchRes++;
+				displayFileMetadata(populatedFileMeta);
+				pthread_mutex_unlock(&countOfSearchResLock);
+				fileDisplayIndexMap[countOfSearchRes]=populatedFileMeta;
+			}
+		}
+	}
+	
+	
+	/*
+	//Check if the filename was obtained.
+	if(fileIDs.size()==0)
+	{
+		//File name was not present in the index.
+		//Hence we dont display any results, directly call function to construct search msg.
+		constructSearchMsg();
+		return;
+	}
+	
+	//The filename was found in the index,create metadata and display it.
+	for(list<int>::iterator i=fileIDs.begin();i!=fileIDs.end();i++)
+	{
+		struct FileMetadata populatedFileMeta = createFileMetadata(*i);
+		displayFileMetadata(populatedFileMeta);
+		
+	}
+	*/
+	
+	//Call function to construct search msg.
+}
+
+void initiateLocalKeywordSearch(list <string> keywords)
+{
+	unsigned char generatedBitVector[128];
+	unsigned char *bitvectorFromMap;
+	unsigned char result;
+	//list<int> matchedFileNos;
+	int match=1;
+	MEMSET_ZERO(generatedBitVector,128);
+	for(list<string>::iterator i=keywords.begin();i!=keywords.end();i++)
+		generateBitVector((unsigned char*)(*i).c_str() , generatedBitVector);
+	
+	for(map<string, list<int> >::iterator it = BitVectorIndexMap.begin(); it != BitVectorIndexMap.end(); ++it)
+	{
+		bitvectorFromMap=(unsigned char*)((*it).first).c_str();
+		printf("The bit-vector obtained from the index is\n%s",bitvectorFromMap);
+		
+		//And the generated and stored bit vector
+		for(int x=0;x<128;x++)
+		{
+			result=bitvectorFromMap[x] & generatedBitVector[x];
+			if(result==0x00)
+				break;
+		}
+		
+		//compare keywords individually of files having matching bit-vector
+		if(result!=0x00)
+		{
+			printf("The bit-vector matched for this file\nPerform keyword search\n");
+			//This is the for-loop for files
+			for(list<int>::iterator y=(*it).second.begin();y!=(*it).second.begin();y++)
+			{
+				struct FileMetadata metadataMatchedFile=createFileMetadata(*y);
+				
+				//match=0;
+				//Now iterate over the keywords from the 
+				for(list<string>::iterator z=keywords.begin();z!=keywords.end();z++)
+				{
+					match=0;
+					for(list<string>::iterator a=metadataMatchedFile.keywords->begin();a!=metadataMatchedFile.keywords->begin();a++)
+					{
+						if(strcasecmp((char*)(*a).c_str(),(char*)(*z).c_str())==0)
+						{
+							match=1;
+							break;
+						}
+					}
+					if(match==1)
+						continue;
+					else
+						break;
+				}
+				if(match==1)
+				{
+					printf("All keywords match\n");
+					pthread_mutex_lock(&countOfSearchResLock);
+					countOfSearchRes++;
+					displayFileMetadata(metadataMatchedFile);
+					pthread_mutex_unlock(&countOfSearchResLock);
+					//matchedFileNos.push_back((*y));
+				}
+			}
+		}
+		else
+			printf("The bit-vector did not match for this file\n");
+	}
+}
+
+void initiateLocalSha1Search(unsigned char* hashvalue)
+{
+	for(map<string, list<int > >::iterator x=SHA1IndexMap.begin();x!=SHA1IndexMap.end();x++)
+	{
+		if((strcasecmp(((*x).first).c_str(),(char*)hashvalue))==0)
+		{
+			for (list<int >::iterator it = (*x).second.begin(); it != (*x).second.end(); ++it)
+			{
+				struct FileMetadata populatedFileMeta = createFileMetadata(*it);
+				pthread_mutex_lock(&countOfSearchResLock);
+				countOfSearchRes++;
+				displayFileMetadata(populatedFileMeta);
+				pthread_mutex_unlock(&countOfSearchResLock);
+			}
+		}	
+	}
+}
+
+struct FileMetadata createFileMetadata(int fNo)
+{
+	unsigned char *fileName[256];	
+	sprintf((char *)fileName, "%s/file/%d.meta", metadata->currWorkingDir, fNo);
+	struct FileMetadata fMeta;
+	GetUOID( const_cast<char *> ("FileID"), fMeta.fileID, sizeof(fMeta.fileID));
+	
+	printf("The file ID obtained is:%s\n",fMeta.fileID);
+	
+	string line;
+	ifstream myfile((char*)fileName,ifstream::in);
+	unsigned char* key;
+	unsigned char* value;
+	if (myfile.is_open())
+	{
+		while ( myfile.good() )
+		{
+			getline (myfile,line);
+			printf("The string obtained is:%s\n",line.c_str());
+			
+			if(strstr((char*)line.c_str(),"[metadata]"))
+				continue;
+			else
+			{
+				key=(unsigned char*)strtok((char*)line.c_str(),"=");
+				printf("The key is:%s\t",key);
+				value=(unsigned char*)strtok(NULL,"\n");
+				printf("The Value is:%s\n",value);
+				if((strcasecmp((char*)key,"FileName"))==0)
+					strncpy((char *)fMeta.fName, (char *)value, strlen((char *)value));
+				
+				if((strcasecmp((char*)key,"FileSize"))==0)
+					fMeta.fSize = atoi((char *)value);
+					
+				if((strcasecmp((char*)key,"SHA1"))==0)
+					strncpy((char*)fMeta.SHA1,(char*)value,strlen((char*)fMeta.SHA1));
+					
+				if((strcasecmp((char*)key,"NONCE"))==0)
+					strncpy((char*)fMeta.NONCE,(char*)value,strlen((char*)fMeta.NONCE));
+				
+				if((strcasecmp((char*)key,"Keywords"))==0)
+				{
+					int start=1;
+					int count=0;	
+					string strValue((char*)value);
+					for(int x=1;x<strValue.length()-1;x++)
+					{
+						if(strValue[x]==' ')
+						{
+							string part(strValue,start,count);
+							printf("The part being pushed is:%s\n",part.c_str());
+							fMeta.keywords->push_back(part);
+							count=0;
+							start=x+1;
+							continue;
+						}
+						count++;
+					}
+				}
+				
+				if((strcasecmp((char*)key,"bit-vector"))==0)
+				{
+					unsigned char *hexBitVector=convertToHex(value,128);
+					strncpy((char*)fMeta.bitVector,(char*)hexBitVector,strlen((char*)fMeta.bitVector));
+				}
+			}
+		}
+		myfile.close();
+	}
+}
+
+void displayFileMetadata(struct FileMetadata fMetadata)
+{
+	printf("[%d] FileId=",countOfSearchRes);
+	int x=0;
+	for(;x<20;)
+	{
+		printf("%02x",fMetadata.fileID[x]);
+		x++;
+	}
+	printf("\n");
+	printf("    FileName=%s\n",fMetadata.fName);
+	printf("    FileSize=%d\n",fMetadata.fSize);
+	printf("    SHA1=");
+	int y=0;
+	for(;y<20;)
+	{
+		printf("%02x",fMetadata.SHA1[y]);
+		y++;
+	}
+	printf("\n");
+	printf("    Nonce=");
+	int z=0;
+	for(;z<20;)
+	{
+		printf("%02x",fMetadata.NONCE[z]);
+		z++;
+	}
+	printf("\n");
+	printf("    Keywords=");
+	list<string>::iterator it=fMetadata.keywords->begin();
+	for(;it!=fMetadata.keywords->end();it++)
+		printf("%s ",(*it).c_str());
+	printf("\n");
+}
+
+void constructSearchMsg(UCHAR *dataForMsg,UCHAR type)
+{
+	struct CachePacket c_packet;
+	c_packet.status=0;
+	c_packet.msgLifetimeInCache=metadata->msgLifeTime;
+	
+	LOCK_ON(&currentNeighboursLock);
+	NEIGHBOUR_MAP_ITERATOR x=currentNeighbours.begin();
+	for(;x!=currentNeighbours.end();)
+	{
+		struct Message msg;
+		msg.query=(UCHAR *)malloc(strlen((char*)dataForMsg));
+		msg.q_type=type;
+		msg.msgType=0xEC;
+		msg.dataLen=strlen((char*)dataForMsg);
+		strncpy((char*)msg.query,(char*)dataForMsg,msg.dataLen);
+		/*
+		int x=0;
+		for(;x<msg.dataLen;)
+		{
+			msg.query[x]=dataForMsg[x];
+			x++;
+		}
+		*/
+		GetUOID( const_cast<char *> ("msg"), msg.uoid, sizeof(msg.uoid));
+		msg.ttl=metadata->ttl;
+		msg.status=2;
+		
+		x++;
+	
+		LOCK_ON(&msgCacheLock);
+		MessageCache[string((char*)msg.uoid)]=c_packet;
+		LOCK_OFF(&msgCacheLock);
+	}
+	LOCK_OFF(&currentNeighboursLock);
+}
 
 void updateLRU(int fNumber) {
 

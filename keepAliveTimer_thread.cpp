@@ -21,8 +21,9 @@ void *keepAliveTimer_thread(void *dummy)
 				{
 					struct Message m;
 					m.status = 0;
-					m.msgType=0xf8;
-					safePushMessageinQ((*i).second,m,"keep_alive_timer_thread");
+					m.msgType= KEEPALIVE;
+					safePushMessageinQ((*i).second, m ,"keep_alive_timer_thread");
+
 				}
 				pthread_mutex_unlock(&connectionMapLock);
 			}

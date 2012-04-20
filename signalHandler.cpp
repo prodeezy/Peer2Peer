@@ -66,4 +66,5 @@ void signal_handler(int sig)
 		printf("[SigHandle] Caught SIGUSR2\n");
 	}
 
+	printf("[SigHandle]\t********** Leaving sighandler thread \n");
 }

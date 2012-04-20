@@ -2,6 +2,7 @@
  *main.h
  **/
 
+
 #include <string.h>
 #include <iostream>
 #include <errno.h>
@@ -54,6 +55,16 @@ using namespace std ;
 #define TO_STRING(const_char_arr, len)					string(const_char_arr, len)
 
 
+#define DEBUGGING_MEMORY_CORRUPTION
+/* comment out the above line when you are done debugging */
+#ifdef DEBUGGING_MEMORY_CORRUPTION
+#ifdef free
+#undef free
+#endif /* free */
+#define free
+#endif /* DEBUGGING_MEMORY_CORRUPTION */
+
+
 typedef map< struct NodeInfo, int >						NEIGHBOUR_MAP;
 typedef NEIGHBOUR_MAP::iterator							NEIGHBOUR_MAP_ITERATOR;
 typedef map< string , struct CachePacket >				CACHEPACKET_MAP;
@@ -73,7 +84,7 @@ typedef list<struct JoinResponseInfo>					JOINRESPINFO_LIST;
 struct FileMetadata 
 {
 
-	list<string> keywords;
+	list<string> *keywords;
 	UCHAR bitVector[128];
 	UCHAR fName[256];
 	UINT fSize;
@@ -242,6 +253,7 @@ extern map<string, list<int> > BitVectorIndexMap;
 extern map<string, list<int> > FileNameIndexMap;
 extern map<string, list<int> > SHA1IndexMap;
 extern map<string, int> fileIDMap;
+extern list<int> cacheLRU;
 
 // For timer thread
 extern int statusTimerFlag ;

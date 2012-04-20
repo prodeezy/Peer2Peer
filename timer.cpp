@@ -51,7 +51,7 @@ void *general_timer(void *dummy)
 
 					metadata->statusFloodTimeout--;
 					metadata->statusFloodTimeout--;
-					printf("[Timer] set statusFloodTimeout = %d\n" , metadata->statusFloodTimeout);
+					//printf("[Timer] set statusFloodTimeout = %d\n" , metadata->statusFloodTimeout);
 					fflush(stdout);
 
 				}
@@ -108,7 +108,10 @@ void *general_timer(void *dummy)
 		}
 		//printf("Going back up---2\n");
 	}
-	printf("Timer exiting now\n");
+
+	printf("[Timer]\t********** Leaving timer thread \n");
+
 	pthread_exit(0);
+
 	return 0;
 }

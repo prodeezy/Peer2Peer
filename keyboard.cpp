@@ -117,7 +117,24 @@ void *keyboard_thread(void *dummy)
 			tokens=(unsigned char*)strtok((char*)input," ");
 			printf("token is:%s\n",tokens);
 			fflush(stdout);
+
 			struct FileMetadata tempMetadata;
+			MEMSET_ZERO(&tempMetadata, sizeof(tempMetadata));
+
+            MEMSET_ZERO(&tempMetadata.NONCE, 128);
+            tempMetadata.keywords =  new list<string >();
+            string sampleRec("SAMPLE1");
+
+            tempMetadata.keywords->push_back(sampleRec);
+
+            sampleRec = "SAMPLE2";
+            tempMetadata.keywords->push_back(sampleRec);
+
+
+
+            MEMSET_ZERO(&tempMetadata.bitVector, 128);
+
+
 			fflush(stdout);
 			tokens=(unsigned char*)strtok(NULL," ");
 			
@@ -130,6 +147,8 @@ void *keyboard_thread(void *dummy)
 				fflush(stdout);
 				continue;
 			}
+
+			MEMSET_ZERO(tempMetadata.fName, 256);
 			strncpy((char *)tempMetadata.fName, (char *)tokens, strlen((char *)tokens));
 			printf("The file name is:%s\n",(char *)tempMetadata.fName);
 			fflush(stdout);
@@ -169,7 +188,8 @@ void *keyboard_thread(void *dummy)
 			SHA1_Init(c);
 			while(fread(&buffer,1,1,f)!=0)
 				SHA1_Update(c, &buffer, 1);
-	
+
+			MEMSET_ZERO(tempMetadata.SHA1, 20);
 			SHA1_Final(tempMetadata.SHA1, c);
 			fclose(f);
 			printf("SHA1 calculated\n");
@@ -205,7 +225,7 @@ void *keyboard_thread(void *dummy)
 					if(count!=0)
 					{
 						printf("keyword being pushed:%s\n",part.c_str());
-						tempMetadata.keywords.push_back(part);
+						tempMetadata.keywords->push_back(part);
 					}
 					count=0;
 					start=j+1;
@@ -221,7 +241,7 @@ void *keyboard_thread(void *dummy)
 			
 			printf("here3.5\n");
 			fflush(stdout);
-			for(list<string >::iterator it = tempMetadata.keywords.begin(); it != tempMetadata.keywords.end(); ++it)
+			for(list<string >::iterator it = tempMetadata.keywords->begin(); it != tempMetadata.keywords->end(); ++it)
 				generateBitVector((unsigned char *)(*it).c_str() , tempMetadata.bitVector);
 			printf(" === Bit Vector ===\n");
 			for(int i=0;i<128;i++)
@@ -314,4 +334,7 @@ void *keyboard_thread(void *dummy)
 			//Use locks to prevent the search results from being displayed
 		}
 	}
+
+	free(input);
+	printf("[Keyboard]\t********** Leaving keyboard thread \n");
 }

@@ -25,65 +25,65 @@ void toSHA1_MD5(UCHAR *str,int choice, UCHAR *buffer)
 void generateBitVector(UCHAR *word , UCHAR *bitVector)
 {
 
-        printf("________ Begin:%s _________\n", (char *) word);
-        fflush(stdout);
+	printf("________ Begin:%s _________\n", (char *) word);
+	fflush(stdout);
 
-    unsigned char tempSHA1[SHA_DIGEST_LENGTH];
-    unsigned char tempMD5[MD5_DIGEST_LENGTH];
+	unsigned char tempSHA1[SHA_DIGEST_LENGTH];
+	unsigned char tempMD5[MD5_DIGEST_LENGTH];
 
-    MEMSET_ZERO(tempSHA1, SHA_DIGEST_LENGTH);
-    MEMSET_ZERO(tempMD5 , MD5_DIGEST_LENGTH);
+	MEMSET_ZERO(tempSHA1, SHA_DIGEST_LENGTH);
+	MEMSET_ZERO(tempMD5 , MD5_DIGEST_LENGTH);
 
-      //  printf("\t memset ZERO, strlen(word) : %d\n", strlen((char*)word));
-        fflush(stdout);
+	//  printf("\t memset ZERO, strlen(word) : %d\n", strlen((char*)word));
+	fflush(stdout);
 
-        // Normalize to lowercase
-        UCHAR lowerCaseWord[strlen((char *)word)];
-        for(int i=0 ; i<strlen((char*)word) && word[i] != '\0' ; i++) {
+	// Normalize to lowercase
+	UCHAR lowerCaseWord[strlen((char *)word)];
+	for(int i=0 ; i<strlen((char*)word) && word[i] != '\0' ; i++) {
 
-//                printf("\t\t ...toLower :%c \n", word[i]);
-                lowerCaseWord[i]= tolower(word[i]);
-        }
-        strncpy((char *)word, (char *)lowerCaseWord, strlen((char *)word));
+		//                printf("\t\t ...toLower :%c \n", word[i]);
+		lowerCaseWord[i]= tolower(word[i]);
+	}
+	strncpy((char *)word, (char *)lowerCaseWord, strlen((char *)word));
 
-        //printf("\t toSHA1_MD5 \n");
-        fflush(stdout);
+	//printf("\t toSHA1_MD5 \n");
+	fflush(stdout);
 
-         toSHA1_MD5(word, 0, tempSHA1);
-         toSHA1_MD5(word, 1, tempMD5);
+	toSHA1_MD5(word, 0, tempSHA1);
+	toSHA1_MD5(word, 1, tempMD5);
 
-//        printf("\t Done SHA1\n");
-        fflush(stdout);
+	//        printf("\t Done SHA1\n");
+	fflush(stdout);
 
-    // SHA1 Index  - right most 9 bits.
-    int sha1Bits = (tempSHA1[SHA_DIGEST_LENGTH - 2] & 1)* 256
-                                +  (unsigned int)(tempSHA1[SHA_DIGEST_LENGTH - 1]);
+	// SHA1 Index  - right most 9 bits.
+	int sha1Bits = (tempSHA1[SHA_DIGEST_LENGTH - 2] & 1)* 256
+			+  (unsigned int)(tempSHA1[SHA_DIGEST_LENGTH - 1]);
 
-    // MD5 Index  - right most 9 bits.
-    int md5Bits = (tempMD5[MD5_DIGEST_LENGTH - 2] & 1)* 256
-                                +  (unsigned int)(tempMD5[MD5_DIGEST_LENGTH - 1]) ;
-
-
-  //      printf("\t minus 9 rightmost \n");
-        fflush(stdout);
-
-    // Push to left side
-    sha1Bits += 512;
-    int numSha1Chars = sha1Bits / 8;
-    int numMd5Chars = md5Bits / 8;
-
-    int sha1WithoutChars = sha1Bits % 8;
-    int md5WithoutChars = md5Bits % 8;
-
-    bitVector[127 - numSha1Chars] |= (0x01 << (sha1WithoutChars));
-    printf("SHA1 : %d\n", sha1Bits);
+	// MD5 Index  - right most 9 bits.
+	int md5Bits = (tempMD5[MD5_DIGEST_LENGTH - 2] & 1)* 256
+			+  (unsigned int)(tempMD5[MD5_DIGEST_LENGTH - 1]) ;
 
 
-    // set the hex equivalent bits of md5 and sha1 indices.
-    bitVector[127 - numMd5Chars] |= (0x01 << (md5WithoutChars));
-    printf("MD5 : %d\n", md5Bits);
+	//      printf("\t minus 9 rightmost \n");
+	fflush(stdout);
 
-    //    printf("________ END _________\n");
+	// Push to left side
+	sha1Bits += 512;
+	int numSha1Chars = sha1Bits / 8;
+	int numMd5Chars = md5Bits / 8;
+
+	int sha1WithoutChars = sha1Bits % 8;
+	int md5WithoutChars = md5Bits % 8;
+
+	bitVector[127 - numSha1Chars] |= (0x01 << (sha1WithoutChars));
+	printf("SHA1 : %d\n", sha1Bits);
+
+
+	// set the hex equivalent bits of md5 and sha1 indices.
+	bitVector[127 - numMd5Chars] |= (0x01 << (md5WithoutChars));
+	printf("MD5 : %d\n", md5Bits);
+
+	//    printf("________ END _________\n");
 }
 
 
@@ -362,8 +362,8 @@ void writeMetadataToFile(struct FileMetadata fMetadata,int globalfNo)
 	fprintf(fptr,"%02x\n",fMetadata.NONCE[19]);
 
 	fprintf(fptr,"%s","Keywords=");
-	for(list<string >::iterator i=fMetadata.keywords.begin();
-	i!=fMetadata.keywords.end();
+	for(list<string >::iterator i=fMetadata.keywords->begin();
+	i!=fMetadata.keywords->end();
 	i++)
 		fprintf(fptr,"%s ",(*i).c_str());
 
@@ -387,9 +387,20 @@ void writeDataToFile(struct FileMetadata fMetadata,int globalfNo)
     while (c != EOF)
 	{
       putc(c,f2);
-	  printf("The character is:%c\n",c);
+	  //printf("The character is:%c\n",c);
 	  c = getc (f1);
     }
 	fclose(f1);
 	fclose(f2);
+}
+
+
+void updateLRU(int fNumber) {
+
+	for(list<int>::iterator entry = cacheLRU.begin(); entry!=cacheLRU.end(); entry++) {
+		if((*entry) == fNumber) {
+			cacheLRU.erase(entry);
+		}
+	}
+	cacheLRU.push_back(fNumber);
 }

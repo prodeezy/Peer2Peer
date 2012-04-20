@@ -24,6 +24,7 @@ int clientConnect(UCHAR *hostname,short int server_pt)
             exit(0);
     }
 
+    printf("[Client] FETCH a new socket\n");
     if ((nSocket = socket(server_info->ai_family, server_info->ai_socktype,server_info->ai_protocol)) == -1)
 	{
             perror("*****Client: socket");
@@ -54,17 +55,20 @@ void* clientThread(void *info)
 	//printf("Inside client thread\n");
 	while(!globalShutdownToggle)
 	{
+
 		pthread_mutex_lock(&currentNeighboursLock);
+
 		if(currentNeighbours.find(node)!=currentNeighbours.end())
 		{
 		//printf("----->Lock left in client Thread\n");
 			pthread_mutex_unlock(&currentNeighboursLock);
-			}
-		else
-		{
+			//sleep(1);
+
+		} else {
+
 			//make connection to this beacon
 			pthread_mutex_unlock(&currentNeighboursLock);
-			//printf("----->Lock left in client Thread\n");
+			//printf("[Client] Call clientConnect\n");
 			r1 = clientConnect(node.hostname,node.portNo);
 			if(r1==-1)
 			{
@@ -72,7 +76,7 @@ void* clientThread(void *info)
 			}
 			else
 			{
-				printf("Connection made\n");
+				printf("[Client] .... Connection made ....\n");
 				struct ConnectionInfo ci;
 				int minit = pthread_mutex_init(&ci.mQLock, NULL) ;
 				if (minit != 0){
@@ -139,5 +143,13 @@ void* clientThread(void *info)
 				childThreadList.clear();
 			}
 		}
+
+		if(globalShutdownToggle) {
+			break;
+		}
+		printf("[Client] sleep for %d secs\n", metadata->beaconRetryTime);
+		sleep(metadata->beaconRetryTime) ;
 	}
+
+	printf("[Client]\t********** Leaving Client thread \n");
 }

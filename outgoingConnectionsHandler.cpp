@@ -51,58 +51,6 @@ int makeTCPPipe(UCHAR *hostName, unsigned int portNum ){
 }
 
 
-string MetaDataToStr(struct FileMetadata metadata)
-{
-                string res ;
-                res.append("[metadata]\nFileName=") ;
-                res.append((char *)metadata.fName) ;
-                res.append("\nFileSize=") ;
-                int len = res.size() ;
-                res.resize(res.size()+16) ;
-
-
-                sprintf(&res[len], "%ld\n",  metadata.fSize);
-                res.resize(strlen(res.c_str())) ;
-                res.append("SHA1=") ;
-                len = res.size() ;
-                res.resize(len+40) ;
-//printf("\n\n");               
-                for(int i=0;i<20;i++)
-                {
-                        sprintf(&res[len+i*2], "%02x", metadata.SHA1[i]);
-                        //printf("%02x", metadata.sha1[i]);
-                }
-
-//printf("\n\n");
-                res.append("\nNonce=") ;
-                len = res.size() ;
-                res.resize(len+40) ;
-                for(int i=0;i<20;i++) 
-                        sprintf(&res[len+i*2], "%02x", metadata.NONCE[i]);
-                                
-                res.append("\nKeywords=") ;
-                len = res.size() ;
-                for (list<string >::iterator it = metadata.keywords.begin(); it != metadata.keywords.end(); ++it){
-                        res.append((*it)) ;
-                        res.append(" ") ;
-                }
-                res.resize(res.size() -1) ;
-
-                res.append("\nBit-vector=") ;
-                len = res.size() ;
-                res.resize(len+256) ;
-                for(int i=0;i<128;i++)
-                        sprintf(&res[len+i*2], "%02x", metadata.bitVector[i]);
-                res.resize(res.size()+1) ;
-                res[len+256] = '\0' ;
-//              res[len+257] = '\0' ;
-                len = len +257 ;
-
-                return res ;
-                //              strncpy((char *)str, res.c_str(), len) ;
-
- }
-
  string toStringMetaData(struct FileMetadata metadata) {
 
 	string strMetadata;
@@ -121,21 +69,6 @@ string MetaDataToStr(struct FileMetadata metadata)
     strMetadata.resize(strlen(strMetadata.c_str())) ;
 				
 		printf("[Writer] metadata str ........ %s", strMetadata.c_str());
-/****
-	//		strMetadata.append(metadata.fSize);
-	strMetadata.append("\nSHA1=");	//		strMetadata.append(metadata.SHA1);
-	strLen = strMetadata.length();
-	strMetadata.resize(strLen+20) ;
-	memcpy(&strMetadata[strLen], metadata.SHA1, 20);
-	
-		printf("[Writer] metadata str ........ %s", strMetadata.c_str());
-
-	
-	strMetadata.append("\nNonce=");			//strMetadata.append(metadata.NONCE);
-	strLen = strMetadata.length();
-	strMetadata.resize(strLen+20) ;
-	memcpy(&strMetadata[strLen], metadata.NONCE, 20);
-****/
 
                 strMetadata.append("SHA1=") ;
                 strLen = strMetadata.size() ;
@@ -156,7 +89,7 @@ string MetaDataToStr(struct FileMetadata metadata)
                                 
                 strMetadata.append("\nKeywords=") ;
                 strLen = strMetadata.size() ;
-                for (list<string >::iterator it = metadata.keywords.begin(); it != metadata.keywords.end(); ++it){
+                for (list<string >::iterator it = metadata.keywords->begin(); it != metadata.keywords->end(); ++it){
                         strMetadata.append((*it)) ;
                         strMetadata.append(" ") ;
                 }
@@ -181,7 +114,7 @@ string MetaDataToStr(struct FileMetadata metadata)
 	strMetadata.resize(strLen+128);
 	memcpy(&strMetadata[strLen], metadata.bitVector, 128);
 	
-	printf("[Writer] metadata str ........ %s", strMetadata.c_str());
+	printf("[Writer] metadata str : %s, strlen(metadata):%d\n", strMetadata.c_str(), strlen(strMetadata.c_str()));
 
 	return strMetadata;
 }
@@ -233,7 +166,7 @@ void fireSTORERequest(struct FileMetadata fileMetadata, char *fileName) {
 
 			if(coinFlip <= metadata->neighborStoreProb) {
 
-				printf("[Writer] \t create message and queue to be sent to neighbour, socket:%d\n", connSocket);
+				printf("[Writer] \t Send STORE to neighbour : %d\n", connSocket);
 				// create message and send to neighbour
 				struct Message msg;
 
@@ -256,7 +189,13 @@ void fireSTORERequest(struct FileMetadata fileMetadata, char *fileName) {
 				msg.metadatLen = metadataLen+1;
 
 				printf("[STORE] metadataLen=%d\n", metadataLen);
+
 				safePushMessageinQ(connSocket , msg,"fireSTORERequest");
+
+			} else {
+
+				printf("[STORE] Skipping sending STORE to neighbour, not Probable coinFlip:%f, neighStoreProb:%f \n",
+								coinFlip, metadata->neighborStoreProb);
 			}
 		}
 
@@ -269,13 +208,18 @@ void *connectionWriterThread(void *args) {
 	uint32_t bufferLength = 0 ;
 	FILE *fileRef;
 	struct Message outgoingMsg ;
-	struct stat st ;
+	//struct stat st ;
+	struct stat fileStat;
 	UCHAR header[HEADER_SIZE] ;
 	MEMSET_ZERO(header,HEADER_SIZE);
 	long connSocket = (long)args ;
 
+
+	printf("[Writer] ++++++ NEW Thread started[%ld] ++++++ \n", connSocket);
+
 	while(!globalShutdownToggle){
 
+		int bytesWrittenTillNow=0;
 
 		LOCK_OFF(&ConnectionMap[connSocket].mQLock);
 
@@ -289,7 +233,7 @@ void *connectionWriterThread(void *args) {
 		if(isConnectionShutting) 
 		{
 
-			////printf("[Writer-%d]\tShutdown connection [%d] break from connection writer thread\n",connSocket, connSocket);
+			//printf("[Writer-%d]\tShutdown connection [%d] break from connection writer thread\n",connSocket, connSocket);
 			break;
 		}
 
@@ -298,13 +242,13 @@ void *connectionWriterThread(void *args) {
 
 			LOCK_ON(&ConnectionMap[connSocket].mQLock) ;
 
-				printf("[Writer] LOCK_ON1(%d)\n",connSocket);
-				printf("[Writer] pick next outgoing message ...\n");
+				//printf("[Writer] LOCK_ON1(%d)\n",connSocket);
+				//printf("[Writer] pick next outgoing message ...\n");
 				outgoingMsg = CONN_SOCKET_MSG_Q(connSocket).front() ;
 				CONN_SOCKET_MSG_Q(connSocket).pop_front() ;
 
 			LOCK_OFF(&ConnectionMap[connSocket].mQLock) ;
-			printf("[Writer] LOCK_OFF1(%d)\n",connSocket);
+			//printf("[Writer] LOCK_OFF1(%d)\n",connSocket);
 
 		} else {
 
@@ -343,51 +287,88 @@ void *connectionWriterThread(void *args) {
 			break;
 		}
 
+		printf("[Writer]--------------- Write a message from Q\n");
+		fflush(stdout);
 
 		// Message originated from here
 		switch(outgoingMsg.status) {
 			case 0 :
 
+				//printf("[Writer] .... Here 0.5\n");
+				fflush(stdout);
+
 				UCHAR uoid[SHA_DIGEST_LENGTH] ;
 				GetUOID( const_cast<char *> ("msg"), uoid, sizeof(uoid)) ;
+
+				//printf("[Writer] .... Here after GetUOID , uoid:%s \n", uoid);
+				fflush(stdout);
+
 				struct CachePacket packet;
 				packet.msgLifetimeInCache = metadata->lifeTimeOfMsg;
 				packet.status = 0 ;
 
+				//printf("[Writer] .... Here after set msgLifeTime\n");
+				fflush(stdout);
 
+				//string strUOID = ;
+				//printf("[Writer] .... strUOID : %s\n", strUOID.c_str());
+				fflush(stdout);
+
+				printf("[Writer] \t save packet in cache\n");
 				LOCK_ON(&msgCacheLock);
-					MessageCache[string((const char *)uoid, SHA_DIGEST_LENGTH) ] = packet;
+					MessageCache[string((const char *)uoid, SHA_DIGEST_LENGTH)] = packet;
 				LOCK_OFF(&msgCacheLock);
 
 				// put uoid into header
 				MEMSET_ZERO(header, HEADER_SIZE) ;
 				memcpy(header+1, uoid, SHA_DIGEST_LENGTH);
 
+				//printf("[Writer] .... Here1\n");
+				fflush(stdout);
+
 				break;
 
 			case 1 :
 
+				//printf("[Writer] .... Here1.5\n");
+				fflush(stdout);
 				MEMSET_ZERO(header, HEADER_SIZE) ;
 				memcpy(header+1, outgoingMsg.uoid, SHA_DIGEST_LENGTH);
+
+				//printf("[Writer] .... Here2\n");
+				fflush(stdout);
 
 				break;
 
 			case 2 :
 
+				//printf("[Writer] .... Here2.5\n");
+				fflush(stdout);
 				MEMSET_ZERO(header, HEADER_SIZE) ;
 				memcpy(header+1, uoid, SHA_DIGEST_LENGTH);
+
+				//printf("[Writer] .... Here3\n");
+				fflush(stdout);
+
 				break;
 
 			case 3 :
 
+				//printf("[Writer] .... Here3.5\n");
+				fflush(stdout);
 				MEMSET_ZERO(header, HEADER_SIZE) ;
 				memcpy(header+1, uoid, SHA_DIGEST_LENGTH);
+
+				//printf("[Writer] .... Here4\n");
+				fflush(stdout);
 
 				break;
 
 		}
 
-		printf("[Writer] Outgoing msg type switch case ...\n");
+		//printf("[Writer] Outgoing msg type switch case ...\n");
+		fflush(stdout);
+
 		if (outgoingMsg.msgType == HELLO_REQ)
 		{
 
@@ -492,8 +473,8 @@ void *connectionWriterThread(void *args) {
 			header[0]  = KEEPALIVE;
 			header[22] = 0x00 ;
 
-			buffer = (UCHAR *)malloc(0) ;
-			MEMSET_ZERO(buffer, 0) ;
+			//buffer = (UCHAR *)malloc(0) ;
+			//MEMSET_ZERO(buffer, 0) ;
 
 			//printf("[Writer-%d]\t Sending KeepAlive request from : %d\n", (int)connSocket, (int)connSocket) ;
 		}
@@ -620,26 +601,41 @@ void *connectionWriterThread(void *args) {
 		else if (outgoingMsg.msgType == STORE_REQ)
 		{
 
-			printf("[Writer] sending STORE REQUEST\n");
+			printf("[Writer]\t STORE outgoing request\n");
 			// check if file exists
 			
 			header[0] = STORE_REQ;
 			header[22] = 0x00;			
 			
 			char *fileName = (char *)outgoingMsg.fileName;
+			printf("[Writer]\t Store... opening file:%s\n", fileName);
 			fileRef = fopen(fileName, "rb");
 			if(fileRef == NULL) {
 
-				printf("[Writer]  File to store could not be opened\n");
+				printf("[Writer]\t File to store could not be opened\n");
 				//doLog((UCHAR *)"//File to store could not be opened\n");
 				continue;
 			}
 
-			struct stat fileStat;
+			//read file and rewing
+			fseek (fileRef , 0 , SEEK_END);
+			long int lSize = ftell (fileRef);
+			rewind (fileRef);
+
+			printf("[Writer]\t Store... seek file size:%ld\n", lSize);
+//			char fileBuf[101];
+//			int retBytes = fread(fileBuf, 1, 100, fileRef);
+//			fileBuf[101]='\0';
+//			printf("[Writer]\t Store... file contents{%s}\n", fileBuf);
+
+			// rewing file reference ptr
+//			rewind(fileRef);
+
+
 
 			if(outgoingMsg.status != 1) {
 				// originated here
-				printf("[Writer] Sending STORE ... Originated here , status:%d \n", outgoingMsg.status);
+				printf("[Writer]\t Sending STORE ... Originated here , status:%d \n", outgoingMsg.status);
 				// write metadata length
 				bufferLength = outgoingMsg.metadatLen + 4;
 				uint32_t metadataLen = outgoingMsg.metadatLen;
@@ -647,18 +643,22 @@ void *connectionWriterThread(void *args) {
 				memcpy(buffer, &metadataLen, 4);
 
 				// write metadata
+				printf("[Writer]\t Sending STORE .... add to buffer:%d, metadataLen:%d\n",
+									strlen((char *)outgoingMsg.metadata), outgoingMsg.metadatLen);
 				memcpy((UCHAR *)buffer+4 , outgoingMsg.metadata, outgoingMsg.metadatLen);
 
 				// get file size
 				stat(fileName, &fileStat);
-				bufferLength += fileStat.st_size;
+				//bufferLength += fileStat.st_size;
 
 
 			} 
 			else 
 			{
+
+
 				// forwarding the message, buffer was already filled by someone
-				printf("[Writer] Sending STORE ... Forwarding  , status:%d \n", outgoingMsg.status);
+				printf("[Writer]\t Sending STORE ... Forwarding  , status:%d ^^^^^^^^^^^^^^^^^^^^^^ \n", outgoingMsg.status);
 
 				bufferLength = outgoingMsg.dataLen ;
 		        buffer = outgoingMsg.buffer ;
@@ -666,18 +666,23 @@ void *connectionWriterThread(void *args) {
 		        stat(fileName, &fileStat) ;
 		        // special status for writing FILE on network
 				outgoingMsg.status = 3;
-				bufferLength += fileStat.st_size ;			
+				//bufferLength += fileStat.st_size ;
 
 			}
 			
+			int totalStoreMsgLen =  bufferLength + (int)fileStat.st_size;
+
 			memcpy((char *) &header[21], &(outgoingMsg.ttl), 1);
-			memcpy((char *) &header[23], &(bufferLength), 4);
+			memcpy((char *) &header[23], &(totalStoreMsgLen), 4);
 			
-			printf("[Writer] Sending Store...  just set header, metadataLen:%d, totalDataLen:%d\n", outgoingMsg.metadatLen, bufferLength);
+			printf("[Writer]\t Sending Store...  just set header, metadataLen:%d, bufferLength:%d, totalStoreMsgLen=%d\n",
+												outgoingMsg.metadatLen, 	bufferLength, 		totalStoreMsgLen);
 			
 		}
 
-		printf("[Writer] .... reset keepalive\n");
+		printf("[Writer]\t .... Reset KEEP_ALIVE\n");
+		fflush(stdout);
+
 		//KeepAlive message sending
 		//Resst the keepAliveTimer for this connection
 		if( ConnectionMap.find(connSocket) != ConnectionMap.end())
@@ -687,12 +692,15 @@ void *connectionWriterThread(void *args) {
 			LOCK_OFF(&connectionMapLock) ;
 		}
 
+		printf("[Writer]\t .... Here6\n");
+		fflush(stdout);
+
 
 		if (ConnectionMap[connSocket].shutDown)
 		{
 
-			printf("[Writer] shutdown BREAK\n");
-			printf("[Writer] LOCK_OFF(%d)\n",connSocket);
+			printf("[Writer]\t shutdown BREAK\n");
+			//printf("[Writer] LOCK_OFF(%d)\n",connSocket);
 			LOCK_OFF(&ConnectionMap[connSocket].mQLock);
 //			doBreak = true;
 			break;
@@ -706,7 +714,19 @@ void *connectionWriterThread(void *args) {
 		int return_code = 0 ;
 
 		printf("[Writer] \t... Write header, msgType:%02x \n", header[0]);
+		fflush(stdout);
+
+		if(header[0] == 0x00) {
+
+			printf("[Writer] ********* FOUND THE BITCH...... msgType:%02x , status:%d CONTINUE! \n", outgoingMsg.msgType, outgoingMsg.status);
+			fflush(stdout);
+
+			continue;
+		}
+
 		return_code = (int)write(connSocket, header, HEADER_SIZE) ;
+		bytesWrittenTillNow += return_code;
+
 		if (return_code != HEADER_SIZE)
 		{
 			fprintf(stderr, "Socket Write Error") ;
@@ -719,28 +739,76 @@ void *connectionWriterThread(void *args) {
 
 			// FILE data is chunked
 			
-			printf("[Writer] \tSending STORE ... metaLen + metaData = %d\n", (bufferLength - st.st_size));
-			write(connSocket, buffer, bufferLength - st.st_size) ;
-			UCHAR fileChunk[8192] ;
-			// read the content of the file and write on the socket
-			//while(!feof(fp)){
+			printf("[Writer] \tSending STORE ... bufferLength = (4 + metaData) = %d , file size : %d\n",
+					bufferLength, (int)fileStat.st_size);
 
-			printf("[Writer] \tSending STORE ... CHUNKING , status:%d \n", outgoingMsg.status);
+			int retCode = write(connSocket, buffer, bufferLength) ;
+			bytesWrittenTillNow += retCode;
+
+
+			printf("[Writer] \tSending STORE ... CHUNKING , status:%d, bytes to be read:%d , till now: %d\n",
+									outgoingMsg.status, 	(int)fileStat.st_size, 		bytesWrittenTillNow);
+
+			UCHAR fileChunk[1] ;
 			int totalBytes = 0;
+
+			//printf("[Writer]\t..... rewind fileRef\n");
+//			rewind(fileRef);
+
+            unsigned char chunk[8192] ;
+            // read the content of the file and write on the socket
+            //while(!feof(fp)){
+            while(1){
+                    memset(chunk, '\0' , 8192) ;
+                    int numBytes = fread(chunk, 1, 8192, fileRef) ;
+                    totalBytes += numBytes;
+                    printf("[Writer]\t.... read bytes:%d, chunk : (%s)\n", numBytes, chunk);
+                    fflush(stdout);
+
+                    if(numBytes == 0)
+                            break;
+                    write(connSocket, chunk, numBytes) ;
+            }
+/***
+
 			for(;;) {
 
-				MEMSET_ZERO(fileChunk, 8192) ;
+				MEMSET_ZERO(fileChunk, 1) ;
+				printf("[Writer]\t..... read CHUNK, till now: %d\n", bytesWrittenTillNow);
+				fflush(stdout);
+				if(fileRef == NULL) {
 
-				int numBytes = fread(fileChunk, 1, 8192, fileRef) ;
-				totalBytes += numBytes;
-				if(numBytes == 0)
+					printf("[Writer]\t..... fileRef was NULL!");
+					fflush(stdout);
 					break;
-				write(connSocket, fileChunk, numBytes) ;
-				printf("[Writer]\t..... Writing the [%s] file, %d bytes wrote\n", fileChunk, numBytes);
-			}
+				}
+				printf("[Writer]..... about to read 1\n");
+				fflush(stdout);
+				int numBytes = fread(fileChunk, 1, 1, fileRef) ;
+				totalBytes += numBytes;
+				if(numBytes == 0) {
 
-			fclose(fileRef);
-			printf("[Writer-%d]\tWrote CHUNKED %d bytes of buffer\n", connSocket, totalBytes);
+					printf("[Writer]..... read 0 bytes BREAK\n");
+					fflush(stdout);
+					break;
+				}
+				printf("[Writer]..... write CHUNK, till now: %d\n", bytesWrittenTillNow);
+				fflush(stdout);
+				retCode = write(connSocket, fileChunk, numBytes) ;
+				bytesWrittenTillNow += retCode;
+				printf("[Writer]\t..... Writing the [%s] file, file size: %d, Bytes wrote from file on socket: %d , till now:%d\n",
+									fileChunk, (int)fileStat.st_size,numBytes, bytesWrittenTillNow);
+				fflush(stdout);
+			}
+**/
+			if(fileRef != NULL) {
+
+				printf("[Writer] \t..... CLOSE fileRef\n");
+				fflush(fileRef);
+				fclose(fileRef);
+			}
+			printf("[Writer-%d]\tWrote entire STORE message, total bytes:%d, till now:%d\n", connSocket, totalBytes, bytesWrittenTillNow);
+			fflush(stdout);
 		}
 		else
 		{
@@ -779,8 +847,10 @@ void *connectionWriterThread(void *args) {
 		}
 ****/
 		// Do some logging
-		//printf("[Writer]\t About to free buffer \n");
-		if(bufferLength > 0 ) {
+		//printf("[Writer]\t About to free strlen(buffer):%d, bufferLength:%d \n", strlen((char *)buffer), bufferLength);
+		fflush(stdout);
+
+		if(bufferLength > 0 && buffer != NULL) {
 
 			free(buffer) ;
 		}
@@ -795,7 +865,7 @@ void *connectionWriterThread(void *args) {
 	printf("[Writer] LOCK_OFF(%d)\n",connSocket);
 	LOCK_OFF(&ConnectionMap[connSocket].mQLock);
 
-	////printf("[Writer-%d]\t********** Leaving write thread \n", connSocket);
+	printf("[Writer-%d]\t********** Leaving write thread \n", connSocket);
 	pthread_exit(0);
 
 	////printf("[Writer-%d]\tExited!\n", connSocket);

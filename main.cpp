@@ -16,6 +16,7 @@ int joinTimeOutFlag = 0;
 pthread_mutex_t connectionMapLock ;
 int acceptServerSocket = 0;
 map<string, struct CachePacket> MessageCache;
+list<int> cacheLRU;
 set< set<struct NodeInfo> > statusProbeResponses;
 list<struct JoinResponseInfo> joinResponses;
 list<pthread_t > childThreadList;
@@ -864,6 +865,8 @@ void *server_thread(void *dummy)
 		}
 	}
 	serverChildThreads.clear();
+
+	printf("[Server]\t********** Leaving server thread \n");
 }
 
 void constructLogAndInitneighbourFileNames()
@@ -1144,16 +1147,17 @@ void init()
 			tempBeaconNode[index].hostname[strlen((const char*)((*it)->hostname))]='\0';
 
 
-			printf("[Main] \tMe %s:%d , Neighbour Beacon %s:%d \n",
-									metadata->hostName, metadata->portNo,
-									tempBeaconNode[index].hostname,tempBeaconNode[index].portNo);
 
 			if(metadata->portNo == tempBeaconNode[index].portNo) {
 
 				index++;
-				printf("[Main] Move to next beacon...\n");
+				printf("[Main] SKIP ... Move to next beacon!\n");
 				continue;
 			}
+
+			printf("[Main] \tMe %s:%d , Neighbour Beacon %s:%d \n",
+									metadata->hostName, metadata->portNo,
+									tempBeaconNode[index].hostname,tempBeaconNode[index].portNo);
 
 			printf("[Main]\t Kickoff connect thread %s:%d\n" ,
 					tempBeaconNode[index].hostname,tempBeaconNode[index].portNo);
@@ -1365,7 +1369,8 @@ void process()
 	printf("[Main]\tWait for all child threads to finish,join all threads to main(), size:%d\n", childThreadList.size());
 	int threadsLeft = childThreadList.size();
 	for (list<pthread_t >::iterator it = childThreadList.begin(); it != childThreadList.end(); ++it){
-		printf("Value is : %d and SIze: %d\n", (int)(*it), (int)childThreadList.size());
+
+		printf("Value is : %d and SIze: %d\n", (int)(*it), threadsLeft);
 		if((pthread_join((*it), &thread_result))!=0)
 		{
 			perror("Thread join failed");
@@ -1438,6 +1443,8 @@ int main(int argc, char *argv[])
 		}
 		printf("%s and %d\n",(char *)metadata->hostName,metadata->portNo);
 	}
+
+	signal(SIGTERM, signal_handler);
 
 	/*struct NodeInfo me;
 	bool val;

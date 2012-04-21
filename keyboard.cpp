@@ -45,8 +45,8 @@ void writeStatusFileOutput()
 	{
 		fData=createFileMetadata(*iter);
 		fileMap[string((char*)fData.fileID,20)]=(*iter);
-		//string strMeta(fMetaToStr(fData));
-		//statusFilesResponsesOfNodes[info].push_front(strMeta);
+		string strMeta(toStringMetaData(fData));
+		statusFilesResponsesOfNodes[info].push_front(strMeta);
 		
 		iter++;
 	}

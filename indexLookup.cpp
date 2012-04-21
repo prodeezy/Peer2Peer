@@ -1114,7 +1114,7 @@ void constructSearchMsg(UCHAR *dataForMsg,UCHAR type)
 		msg.status=2;
 
 		safePushMessageinQ((*x).second,msg,"constructSearchMsg");
-		printf("Message pushed in queue for neighbor:%d",(*x).first.portNo);
+		printf("[search] Message pushed in queue for neighbor:%d",(*x).first.portNo);
 		x++;
 	
 		LOCK_ON(&msgCacheLock);

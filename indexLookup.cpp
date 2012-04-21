@@ -706,7 +706,7 @@ struct FileMetadata createFileMetadata(int fNo)
 						if(strValue[x]==' ')
 						{
 							string part(strValue,start,count);
-							printf("The part being pushed is:%s the start:%d count:%d\n",part.c_str(),start,count);
+							//printf("The part being pushed is:%s the start:%d count:%d\n",part.c_str(),start,count);
 							fMeta.keywords->push_back(part);
 							count=0;
 							start=x+1;
@@ -719,17 +719,22 @@ struct FileMetadata createFileMetadata(int fNo)
 					if(count!=0)
 					{
 						string part(strValue,start,count);
-						printf("The part being pushed is:%s the start:%d count:%d\n",part.c_str(),start,count);
+						//printf("The part being pushed is:%s the start:%d count:%d\n",part.c_str(),start,count);
 						fMeta.keywords->push_back(part);
 					}
 				}
 				
 				if((strcasecmp((char*)key,"bit-vector"))==0)
 				{
-						printf("parse bit-vector\n");
+						printf("parse bit-vector===****>\n");
 						fflush(stdout);
 						unsigned char *hexBitVector=convertToHex(value,128);
-					strncpy((char*)fMeta.bitVector,(char*)hexBitVector,strlen((char*)fMeta.bitVector));
+						for(int f=0;f<128;f++)
+							fMeta.bitVector[f]=hexBitVector[f];
+						for(int w=0;w<128;w++)
+							printf("%02x",fMeta.bitVector[w]);
+							printf("\n");
+					//strncpy((char*)fMeta.bitVector,(char*)hexBitVector,128);
 				}
 			}
 		}

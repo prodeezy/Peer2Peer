@@ -21,6 +21,7 @@ void initiateNotify(int errorCode)
 
 void writeStatusFileOutput()
 {
+	printf("Entered writeStatusFileOutput method NOW!!!\n");
 	LOCK_ON(&statusMsgLock);
 	list <int> myFileList;
 	
@@ -29,6 +30,7 @@ void writeStatusFileOutput()
 	struct FileMetadata fData;
 	
 	myFileList=getAllFileInfo();
+	printf("Got all the files on the node\n");
 	int i;
 	info.portNo=metadata->portNo;
 	i=0;
@@ -39,19 +41,25 @@ void writeStatusFileOutput()
 	}
 	
 	statusFilesResponsesOfNodes[info];
-	
+	string strMeta("");
 	list<int>::iterator iter=myFileList.begin();
 	for(;iter!=myFileList.end();)
 	{
 		fData=createFileMetadata(*iter);
-		fileMap[string((char*)fData.fileID,20)]=(*iter);
-		string strMeta(toStringMetaData(fData));
-		statusFilesResponsesOfNodes[info].push_front(strMeta);
+		printf("The bitvector from file is====***********>");
+		for(int w=0;w<128;w++)
+			printf("%02x",fData.bitVector[w]);
+		printf("\n");
 		
+		fileMap[string((char*)fData.fileID,20)]=(*iter);
+		strMeta=toStringMetaData(fData);
+		printf("The string obtained is:%s\n",strMeta.c_str());
+		statusFilesResponsesOfNodes[info].push_front(strMeta);
 		iter++;
 	}
 	
 	FILE *fptr=fopen((char*)metadata->statusOutFileName,"a");
+	
 	map<struct NodeInfo,list<string> >::iterator x=statusFilesResponsesOfNodes.begin();
 	
 	if(fptr==NULL)
@@ -74,8 +82,9 @@ void writeStatusFileOutput()
 		list<string>::iterator it2=(*x).second.begin();
 		for(;it2!=(*x).second.end();)
 		{
-			fprintf(fptr,"%s\n",(*it2).c_str());
+			fputs((*it2).c_str(),fptr);
 			it2++;
+			fputs("\n",fptr);
 		}
 		x++;
 	}
@@ -455,7 +464,7 @@ void *keyboard_thread(void *dummy)
 		
 		else if(strstr((char*)input,"status files")!=NULL)
 		{
-			printf("The status files command is caught\n");
+			printf("The status files command is caught!!!\n");
 			
 			UCHAR *token;
 			token=(UCHAR*)strtok((char*)input," ");
@@ -480,6 +489,7 @@ void *keyboard_thread(void *dummy)
 				}
 			}
 			metadata->status_ttl=atoi((char*)token);
+			printf("The ttl from status command is:%d\n",metadata->status_ttl);
 			
 			token=(UCHAR*)strtok(NULL," ");
 			
@@ -491,10 +501,11 @@ void *keyboard_thread(void *dummy)
 			}
 			MEMSET_ZERO(fName,256);
 			
-			strncpy((char *)metadata->statusOutFileName, (char*)token, strlen((char *)token)) ;
+			strncpy((char *)metadata->statusOutFileName, (char*)token, strlen((char *)token)-1) ;
+			metadata->statusOutFileName[strlen((char *)token)]='\0';
 			printf("[Keyboard]\t Status file:'%s'\n",metadata->statusOutFileName);
 			metadata->statusFloodTimeout = metadata->lifeTimeOfMsg + 10 ;
-			printf("[Keyboard]\t  keyboard OPEN status file \n");
+			printf("[Keyboard]\t  keyboard OPENING status file \n");
 			FILE *fp = fopen((char *)metadata->statusOutFileName, "w") ;
 			
 			if (fp == NULL)
@@ -506,9 +517,11 @@ void *keyboard_thread(void *dummy)
 			
 			fclose(fp);
 			
+			printf("Now checking for TTL and flooding if required\n");
 			if(metadata->status_ttl >= 1)
 			{
 				struct CachePacket cp;
+				printf("Flood the status files command into the network\n");
 				cp.status_type=0x02;
 				cp.status=0;
 				UCHAR msg_uoid[SHA_DIGEST_LENGTH];
@@ -518,7 +531,7 @@ void *keyboard_thread(void *dummy)
 				MessageCache[string((const char*)msg_uoid,SHA_DIGEST_LENGTH)]=cp;
 				LOCK_OFF(&msgCacheLock);
 				
-				
+				printf("Cache packet added to message cache with UOID:%s\n",(char*)msg_uoid);
 				LOCK_ON(&currentNeighboursLock);
 				NEIGHBOUR_MAP_ITERATOR iter=currentNeighbours.begin();
 				for(;iter!=currentNeighbours.end();)
@@ -531,6 +544,7 @@ void *keyboard_thread(void *dummy)
 					msg.msgType=0xAC;
 					safePushMessageinQ((*iter).second,msg,"keyborad:status files");
 					iter++;
+					printf("Pushed message for socket no%d",(*iter).second);
 				}
 				LOCK_OFF(&currentNeighboursLock);
 				

@@ -53,22 +53,22 @@ int makeTCPPipe(UCHAR *hostName, unsigned int portNum ){
 
  string toStringMetaData(struct FileMetadata metadata) {
 
-	string strMetadata;
+    string strMetadata;
 
-	strMetadata.append("[metadata]");
-	strMetadata.append("\nFileName=");	
-	strMetadata.append((char *)metadata.fName);
+    strMetadata.append("[metadata]");
+    strMetadata.append("\nFileName=");    
+    strMetadata.append((char *)metadata.fName);
 
-	strMetadata.append("\nFileSize=");
-	int strLen = strMetadata.size();
-	strMetadata.resize(strLen+4) ;
-//	sprintf(&strMetadata[strLen], "%d", metadata.fSize);
+    strMetadata.append("\nFileSize=");
+    int strLen = strMetadata.size();
+    strMetadata.resize(strLen+4) ;
+//    sprintf(&strMetadata[strLen], "%d", metadata.fSize);
 
-	
+    
     sprintf(&strMetadata[strLen], "%d\n",  metadata.fSize);
     strMetadata.resize(strlen(strMetadata.c_str())) ;
-				
-		printf("[Writer] metadata str ........ %s", strMetadata.c_str());
+                
+        printf("[Writer] metadata str ........ %s", strMetadata.c_str());
 
                 strMetadata.append("SHA1=") ;
                 strLen = strMetadata.size() ;
@@ -95,28 +95,35 @@ int makeTCPPipe(UCHAR *hostName, unsigned int portNum ){
                 }
                 strMetadata.resize(strMetadata.size() -1) ;
 
-		printf("[Writer] metadata str ........ %s", strMetadata.c_str());
+        printf("[Writer] metadata str ........ %s", strMetadata.c_str());
 /**
-	strMetadata.append("\nKeywords=");
-	list<string> keywordList = metadata.keywords;
-	for(list<string>::iterator iter=keywordList.begin(); iter!=keywordList.end(); iter++) {
+    strMetadata.append("\nKeywords=");
+    list<string> keywordList = metadata.keywords;
+    for(list<string>::iterator iter=keywordList.begin(); iter!=keywordList.end(); iter++) {
 
-		strMetadata.append((*iter));
-		if( iter++ != keywordList.end()) {
-			strMetadata.append(" ");
-		}
-		iter--;
-	}
-	**/
-	strMetadata.append("\nBit-vector=");
-	
-	strLen = strMetadata.length();
-	strMetadata.resize(strLen+128);
-	memcpy(&strMetadata[strLen], metadata.bitVector, 128);
-	
-	printf("[Writer] metadata str : %s, strlen(metadata):%d\n", strMetadata.c_str(), strlen(strMetadata.c_str()));
+        strMetadata.append((*iter));
+        if( iter++ != keywordList.end()) {
+            strMetadata.append(" ");
+        }
+        iter--;
+    }
+    **/
+    strMetadata.append("\nBit-vector=");
+    
+    strLen = strMetadata.length();
+	strMetadata.resize(strLen+256) ;
+	for(int i=0;i<128;i++)
+		sprintf(&strMetadata[strLen+i*2], "%02x", metadata.bitVector[i]);
+	strMetadata.resize(strMetadata.size()+1) ;
+	strMetadata[strLen+256] = '\0' ;
+	printf("Bit-vector=======>\n");
+	for(int f=0;f<128;f++)
+		printf("%02x", metadata.bitVector[f]);
+    memcpy(&strMetadata[strLen], metadata.bitVector, 128);
+    
+    printf("[Writer] metadata str : %02x, strlen(metadata):%d\n", strMetadata.c_str(), strlen(strMetadata.c_str()));
 
-	return strMetadata;
+    return strMetadata;
 }
 
 /**
@@ -603,9 +610,9 @@ void *connectionWriterThread(void *args) {
 					
 					for(;x!=allMyFileInfo.end();)
 					{
-						x++;
 						fMetadata = createFileMetadata(*x);
 						fileMap[string((char*)fMetadata.fileID,20)]=(*x);
+						x++;
 						UINT tempLengthTwo = 0 ;
 						strFileMetadata=toStringMetaData(fMetadata);
 						int newStrSize=strFileMetadata.size();

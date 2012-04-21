@@ -55,7 +55,7 @@ using namespace std ;
 #define TO_STRING(const_char_arr, len)					string(const_char_arr, len)
 
 
-#define DEBUGGING_MEMORY_CORRUPTION
+//define DEBUGGING_MEMORY_CORRUPTION
 /* comment out the above line when you are done debugging */
 #ifdef DEBUGGING_MEMORY_CORRUPTION
 #ifdef free
@@ -261,6 +261,8 @@ extern map<string, int> fileIDMap;
 extern list<int> cacheLRU;
 //extern map<string, int> fileIDMap;
 extern map<int, struct FileMetadata> fileDisplayIndexMap;
+extern map<struct NodeInfo, list<string> >statusFilesResponsesOfNodes;
+extern map<string,int>fileMap;
 
 // For timer thread
 extern int statusTimerFlag ;
@@ -328,7 +330,9 @@ extern unsigned char* convertToHex(unsigned char *str, int len);
 extern void fireSTORERequest(struct FileMetadata fileMetadata, char *fileName);
 extern void initiateLocalFilenameSearch(unsigned char *fileToBeSearched);
 extern void initiateLocalSha1Search(unsigned char* hashvalue);
-extern void initiateLocalKeywordSearch(list <string> keywords);
+extern void initiateLocalKeywordSearch(unsigned char* v);
 extern struct FileMetadata createFileMetadata(int fNo);
 extern void displayFileMetadata(struct FileMetadata fMetadata);
 extern void constructSearchMsg(UCHAR *dataForMsg,UCHAR type);
+extern list<int> getAllFileInfo();
+extern string toStringMetaData(struct FileMetadata metadata);

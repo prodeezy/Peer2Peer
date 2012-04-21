@@ -38,8 +38,8 @@ pthread_cond_t searchMsgCV;
 pthread_mutex_t countOfSearchResLock;
 int countOfSearchRes=0;
 map<int, struct FileMetadata> fileDisplayIndexMap;
-
-
+map<struct NodeInfo, list<string> >statusFilesResponsesOfNodes;
+map<string,int>fileMap;
 
 
 /***

@@ -253,7 +253,8 @@ void floodStatusOnNetwork(int & reqSockfd, uint8_t ttl, unsigned int & dataLen, 
 
 	printf("[Reader] Flood status request to all neighbours...\n");
 	LOCK_ON(&currentNeighboursLock);
-	for (NEIGHBOUR_MAP_ITERATOR it = currentNeighbours.begin(); it != currentNeighbours.end(); ++it)
+	NEIGHBOUR_MAP_ITERATOR it = currentNeighbours.begin();
+	for (; it != currentNeighbours.end(); )
 	{
 		int neighSocket = (*it).second;
 
@@ -286,6 +287,7 @@ void floodStatusOnNetwork(int & reqSockfd, uint8_t ttl, unsigned int & dataLen, 
 			**/
 
 		}
+		++it;
 	}
 	LOCK_OFF(&currentNeighboursLock);
 }
@@ -646,7 +648,7 @@ void handleRequestByCase(int connSocketFd,
 		if (metadata->ttl > 0 && ttl >= 1){
 
 			//printf("[Reader] About to flood to neighbours\n");
-			//floodStatusOnNetwork(connSocketFd, ttl, dataLen, buffer, uoid);
+			floodStatusOnNetwork(connSocketFd, ttl, dataLen, buffer, uoid);
 
 		}
 
@@ -677,26 +679,51 @@ void handleRequestByCase(int connSocketFd,
 		//printf("[Reader] Received STATUS ... cache check \n" );
 
 
-		if (MessageCache.find( TO_STRING((const char *)originalMsg_UOID , SHA_DIGEST_LENGTH)) != MessageCache.end()){
-
+		if (MessageCache.find( TO_STRING((const char *)originalMsg_UOID , SHA_DIGEST_LENGTH)) != MessageCache.end())
+		{
 			//message origiated from here
 			//printf("[Reader-%d] Received STATUS ... Message originated from this node...\n", connSocketFd) ;
-			if(MessageCache [ TO_STRING((const char *)originalMsg_UOID, SHA_DIGEST_LENGTH)   ].status == 1){
+			if(MessageCache [ TO_STRING((const char *)originalMsg_UOID, SHA_DIGEST_LENGTH)   ].status == 1)
+			{
 
 				//printf("[Reader] Received STATUS ... handleMsgToBeForwarded \n" );
 				handleMsgToBeForwarded(originalMsg_UOID, msgType, dataLen, buffer, uoid) ;
 
-			} else if (MessageCache [ TO_STRING((const char *)originalMsg_UOID , SHA_DIGEST_LENGTH) ].status == 0){
-
-				//printf("[Reader] Received STATUS status == 0 \n" );
-				// Case of status neighbors
-				//if(MessageCache [ TO_STRING((const char *)originalMsg_UOID, SHA_DIGEST_LENGTH)].status_type == 0x01){
-
-					//printf("[Reader] Received STATUS ... insert into status responses \n" );
+			} 
+			else if (MessageCache [ TO_STRING((const char *)originalMsg_UOID , SHA_DIGEST_LENGTH) ].status == 0)
+			{
+				//printf("[Reader] Received STATUS ... insert into status responses \n" );
+				if(MessageCache [ TO_STRING((const char *)originalMsg_UOID , SHA_DIGEST_LENGTH) ].status_type=0x01)
+				{
 					handleStatusNeighboursCommand(tempLength, dataLen, buffer, n) ;
-				//}
+				}
+				else
+				{
+					LOCK_ON(&statusMsgLock);
+					if(statusTimerFlag)
+					{
+						int totalLengthTillHPHN = tempLength + 22;
+						if(totalLengthTillHPHN < (int)dataLen)
+						{
+							UINT recordLen = 0;
+							memcpy((UINT*)&recordLen,&buffer[totalLengthTillHPHN],4);
+							if(recordLen == 0)
+								recordLen = dataLen - totalLengthTillHPHN;
+							
+							string dataRecord((char*)&buffer[totalLengthTillHPHN],recordLen);
+							statusFilesResponsesOfNodes[n].push_front(dataRecord);
+						}
+						else
+						{
+							statusFilesResponsesOfNodes[n];
+						}
+					}
+					LOCK_OFF(&statusMsgLock) ;
+				}
 			}
-		} else {
+		} 
+		else 
+		{
 
 			//printf("[Reader] Received STATUS ... Message not from here.. return\n");
 			return;

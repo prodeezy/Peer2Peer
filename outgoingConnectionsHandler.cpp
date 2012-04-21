@@ -505,7 +505,7 @@ void *connectionWriterThread(void *args) {
 			header[0] = STATUS_REQ;
 			memcpy((char *)header + 23, &(bufferLength), 4) ;
 			memcpy((char *)header + 21, &(outgoingMsg.ttl), 1) ;
-
+			printf("*****The buffer length in header is:%c",header[23]);
 
 		}
 		else if (outgoingMsg.msgType == NOTIFY)
@@ -534,7 +534,8 @@ void *connectionWriterThread(void *args) {
 				bufferLength = outgoingMsg.dataLen ;
 
 			}
-			else{
+			else
+			{
 
 				printf("[Writer] status != 1\n");
 
@@ -557,7 +558,8 @@ void *connectionWriterThread(void *args) {
 				for (int i = 24 ; i < (int)lenth ; ++i)
 					buffer[i] = host[i-24] ;
 
-				if(outgoingMsg.statusType == 0x01){
+				if(outgoingMsg.statusType == 0x01)
+				{
 
 					printf("[Writer]Send STATUS RESPONSE to all neighbours....\n");
 					for(NEIGHBOUR_MAP::iterator currNeighIter = currentNeighbours.begin()
@@ -587,6 +589,44 @@ void *connectionWriterThread(void *args) {
 
 						for (int i = bufferLength - lengthTwo + 2 ; i < (int)bufferLength ; ++i) {
 							buffer[i] = host[i -(bufferLength-lengthTwo+2)] ;
+						}
+					}
+				}
+				else if(outgoingMsg.statusType == 0x02)
+				{
+					list <int> allMyFileInfo;
+					struct FileMetadata fMetadata;
+					allMyFileInfo = getAllFileInfo();
+					string strFileMetadata("");
+					
+					list <int>::iterator x = allMyFileInfo.begin();
+					
+					for(;x!=allMyFileInfo.end();)
+					{
+						x++;
+						fMetadata = createFileMetadata(*x);
+						fileMap[string((char*)fMetadata.fileID,20)]=(*x);
+						UINT tempLengthTwo = 0 ;
+						strFileMetadata=toStringMetaData(fMetadata);
+						int newStrSize=strFileMetadata.size();
+						lenth=lenth+newStrSize+4;
+						buffer=(UCHAR*)realloc(buffer,lenth);
+						
+						if(x!=allMyFileInfo.end())
+						{
+							memcpy(&buffer[lenth-newStrSize-4],&(newStrSize),4);
+						}
+						else
+						{
+							tempLengthTwo=0;
+							memcpy(&buffer[lenth-newStrSize-4], &(tempLengthTwo), 4);
+						}
+						x--;
+						int z=bufferLength-newStrSize;
+						for(;z<(int)lenth;)
+						{
+							buffer[z]=strFileMetadata[z-lenth+newStrSize];
+							z++;
 						}
 					}
 				}

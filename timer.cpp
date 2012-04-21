@@ -56,7 +56,8 @@ void *general_timer(void *dummy)
 
 				}
 
-				if(metadata->statusFloodTimeout <= 0) {
+				if(metadata->statusFloodTimeout <= 0) 
+				{
 
 					printf("[Timer]\t status flood timed out\n");
 					fflush(stdout);

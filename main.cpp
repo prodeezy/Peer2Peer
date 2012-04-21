@@ -184,7 +184,7 @@ void messageType(uint8_t m_type)
 
 	//printf("[Log]\t\t..begin message type, m_type:%#x\n", m_type);
 
-	const char *temporaryMessageType;
+	const char temporaryMessageType[4];
 
 	if(m_type == 0xf7) {
 

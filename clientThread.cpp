@@ -35,12 +35,14 @@ int clientConnect(UCHAR *hostname,short int server_pt)
     if (status < 0)
 		return -1;
     else
+	{	
+		doLog((UCHAR*)"//Connected to a node\n");
         return nSocket;
+	}
 }
 
 void* clientThread(void *info)
 {
-	
 	struct NodeInfo node;
 	memset (&node,0,sizeof(node));
 	node =*((struct NodeInfo*)info);

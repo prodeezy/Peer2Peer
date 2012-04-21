@@ -21,7 +21,7 @@ void initiateNotify(int errorCode)
 
 void writeStatusFileOutput()
 {
-	printf("Entered writeStatusFileOutput method NOW!!!\n");
+	printf("***Entered writeStatusFileOutput method NOW!!!***\n");
 	LOCK_ON(&statusMsgLock);
 	list <int> myFileList;
 	
@@ -30,7 +30,7 @@ void writeStatusFileOutput()
 	struct FileMetadata fData;
 	
 	myFileList=getAllFileInfo();
-	printf("Got all the files on the node\n");
+	printf("[Status]Got all the files for status on the node\n");
 	int i;
 	info.portNo=metadata->portNo;
 	i=0;
@@ -46,14 +46,14 @@ void writeStatusFileOutput()
 	for(;iter!=myFileList.end();)
 	{
 		fData=createFileMetadata(*iter);
-		printf("The bitvector from file is====***********>");
+		printf("[status]The bitvector from file is====***********>");
 		for(int w=0;w<128;w++)
 			printf("%02x",fData.bitVector[w]);
 		printf("\n");
 		
 		fileMap[string((char*)fData.fileID,20)]=(*iter);
 		strMeta=toStringMetaData(fData);
-		printf("The string obtained is:%s\n",strMeta.c_str());
+		printf("[status]The string obtained is:%s\n",strMeta.c_str());
 		statusFilesResponsesOfNodes[info].push_front(strMeta);
 		iter++;
 	}
@@ -90,6 +90,7 @@ void writeStatusFileOutput()
 	}
 	
 	fclose(fptr);
+	printf("[status]The status file is closed,wrote status\n");
 	statusFilesResponsesOfNodes.clear();
 	LOCK_OFF(&statusMsgLock);
 }
@@ -198,17 +199,6 @@ void *keyboard_thread(void *dummy)
 
             MEMSET_ZERO(&tempMetadata.NONCE, 128);
             tempMetadata.keywords =  new list<string >();
-            tempMetadata.keywords->clear();
-
-            //string sampleRec("SAMPLE1");
-
-            //tempMetadata.keywords->push_back(sampleRec);
-
-            //sampleRec = "SAMPLE2";
-            //tempMetadata.keywords->push_back(sampleRec);
-
-
-
             MEMSET_ZERO(&tempMetadata.bitVector, 128);
 
 
@@ -330,7 +320,7 @@ void *keyboard_thread(void *dummy)
 			unsigned char psswd[SHA_DIGEST_LENGTH];
 			int globalfNumber=incfNumber();
 			printf("global file updated:%d\n",globalfNumber);
-			GetUOID(const_cast<char *> ("password"), psswd, sizeof(psswd), "Keyboard");
+			GetUOID(const_cast<char *> ("password"), psswd, sizeof(psswd),"keyboard_thread");
 			printf("The password obtained is:%s\n",psswd);
 			sprintf((char*)psswdfName,"%s/file/%d.pass",metadata->currWorkingDir,globalfNumber);
 			FILE *psswdfptr=fopen((char*)psswdfName,"w+");
@@ -353,13 +343,14 @@ void *keyboard_thread(void *dummy)
 				printf("[keyboard]\t Start flooding store msg\n");
 				fireSTORERequest(tempMetadata, (char *)tempMetadata.fName);
 			}
+			printf("Local store handling DONE!!!\n");
 		}
 		
 		else if(strstr((char*)input,"search")!=NULL)
 		{
 			unsigned char* token;
 			
-			printf("[Keyboard] Fire Search command is:%s\n",input);
+			printf("The search command caught is:%s\n",input);
 			
 			token=(unsigned char*)strtok((char*)input," ");
 			
@@ -369,86 +360,104 @@ void *keyboard_thread(void *dummy)
 			
 			unsigned char* pattern;
 			pattern=token;
-			printf("[Keyboard] The value that is to be searched against is:%s",pattern);
+			printf("The value that is to be searched against is:%s",pattern);
 			
 			token=(unsigned char*)strtok(NULL,"\n");
 			unsigned char* value;
 			value=token;
-			printf("[Keyboard]\t the value is:%s\n",value);
+			printf("\t the value is:%s\n",value);
 			list <string> keyword_search;
 			//string SToken((char*)value);			
 			//Clear the search parameters first.
-
 			fileDisplayIndexMap.clear();
 			LOCK_ON(&countOfSearchResLock);
-				countOfSearchRes=0;
+			countOfSearchRes=0;
 			LOCK_OFF(&countOfSearchResLock);
 			
 			printf("The parameters are cleared\n");
 			if(!strcasecmp((char*)pattern,"keywords"))
 			{
-				printf("[Keyboard] Calling local keyword search method\n");
-
+				/*
+				printf("the keywords are:\n");
+				int start=1;
+				int count=0;
+				for(int x=1;x<SToken.length();x++)
+				{
+					if(SToken[x]==' ')
+					{
+						string part(SToken,start,count);
+						printf("The part being pushed is:%s the start:%d count:%d\n",part.c_str(),start,count);
+						keyword_search.push_back(part);
+						count=0;
+						start=x+1;
+					}
+					else
+					{
+						count++;
+					}
+				}
+				if(count!=0)
+				{
+					string part(SToken,start,count-1);
+					printf("The part being pushed is:%s the start:%d count:%d\n",part.c_str(),start,count);
+					keyword_search.push_back(part);
+				}*/
+				
+				printf("Calling local keyword search method\n");
 				initiateLocalKeywordSearch(value);
-
 				constructSearchMsg(value,0x03);
 				//break;
 			}
 			
 			if(!strcasecmp((char*)pattern,"sha1hash"))
 			{
-				unsigned char* hash=convertToHex(20, value);
-				printf("[Keyboard] Calling local sha1 search method\n");
+				unsigned char* hash=convertToHex(20,value);
+				printf("Calling local sha1 search method\n");
 				int y=0;
 				for(;y<SHA_DIGEST_LENGTH;)
 				{
 					printf("%02x",hash[y]);
 					y++;
 				}
-
 				initiateLocalSha1Search(value);
-
 				constructSearchMsg(value,0x02);
 			}
 			
 			if(!strcasecmp((char*)pattern,"filename"))
 			{
-				printf("[Keyboard] Calling local filename search method for filename=%s\n",value);
-
+				printf("Calling local filename search method for filename=%s\n",value);
 				//initiateLocalFilenameSearch(value);
-
 				bool ifExists = FileNameIndexMap.find((char*)value)!=FileNameIndexMap.end();
 				if(ifExists) {
-
-					printf("[Keyboard] File exists.. Initiate Local Filename Search\n");
-					list<int> fNumbers = FileNameIndexMap[(char*)value];
-
+					
+						int strLeng=strlen((char*)value);
+						string strVal((char*)value,strLeng);
+						list<int> fNumbers = FileNameIndexMap[strVal];
+						printf("[keyboard] the size of the list is:%d\n",FileNameIndexMap[strVal].size());
 					for(list<int>::iterator listIter = fNumbers.begin();
-							listIter!=fNumbers.end();
-							listIter++) {
+						listIter!=fNumbers.end();
+						listIter++) {
 
-								printf("[Keyboard] \tFileNumber:%d\n", (*listIter));
+								printf("\tFileNumber:%d\n", (*listIter));
 								
 								struct FileMetadata populatedFileMeta = createFileMetadata(*listIter);
-								printf("[Keyboard] \tDone with createFileMetadata\n");
+								printf("\tDone with createFileMetadata\n");
 								
 								pthread_mutex_lock(&countOfSearchResLock);
-								printf("[Keyboard] \tThe value of countOfSearchRes is:%d\n",countOfSearchRes);
+								printf("\tThe value of countOfSearchRes is:%d\n",countOfSearchRes);
 								countOfSearchRes++;
-								printf("[Keyboard] \tThe value of countOfSearchRes is:%d\n",countOfSearchRes);
+								printf("\tThe value of countOfSearchRes is:%d\n",countOfSearchRes);
 								fileDisplayIndexMap[countOfSearchRes]=populatedFileMeta;
-								printf("[Keyboard] \tFile added to the fileDisplayIndexMap whose size is now:%d\n",fileDisplayIndexMap.size());
+								printf("\tFile added to the fileDisplayIndexMap whose size is now:%d\n",fileDisplayIndexMap.size());
 								displayFileMetadata(populatedFileMeta);
 								pthread_mutex_unlock(&countOfSearchResLock);
 								
-								printf("[Keyboard] \tNEXT FILE NUMBER\n");
+								printf("\tNEXT FILE NUMBER\n");
 								fflush(stdout);
 						
 						}			
 											
 				}
-
-
 				constructSearchMsg(value,0x01);
 			}
 			//Use locks to prevent the keyboard from looping back-up
@@ -459,7 +468,7 @@ void *keyboard_thread(void *dummy)
 		
 		else if(strstr((char*)input,"status files")!=NULL)
 		{
-			printf("The status files command is caught!!!\n");
+			printf("[status] The status files command is caught!!!\n");
 			
 			UCHAR *token;
 			token=(UCHAR*)strtok((char*)input," ");
@@ -522,7 +531,7 @@ void *keyboard_thread(void *dummy)
 				UCHAR msg_uoid[SHA_DIGEST_LENGTH];
 				cp.msgLifetimeInCache=metadata->msgLifeTime;
 				LOCK_ON(&msgCacheLock);
-				GetUOID( const_cast<char *> ("msg"), msg_uoid, sizeof(msg_uoid), "keyboard");
+				GetUOID( const_cast<char *> ("msg"), msg_uoid, sizeof(msg_uoid),"keyboard_thread");
 				MessageCache[string((const char*)msg_uoid,SHA_DIGEST_LENGTH)]=cp;
 				LOCK_OFF(&msgCacheLock);
 				
@@ -539,7 +548,7 @@ void *keyboard_thread(void *dummy)
 					msg.msgType=0xAC;
 					safePushMessageinQ((*iter).second,msg,"keyborad:status files");
 					iter++;
-					printf("Pushed message for socket no%d",(*iter).second);
+					printf("[Status]\tPushed message for socket no:%d",(*iter).second);
 				}
 				LOCK_OFF(&currentNeighboursLock);
 				

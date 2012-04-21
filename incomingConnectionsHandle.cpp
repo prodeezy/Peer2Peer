@@ -62,8 +62,6 @@ void destroyConnectionAndCleanup(int reqSockfd)
 void safePushMessageinQ(int connSocket, struct Message mes,const char* methodName)
 {
 
-	printf("[%s] Push in Q to be sent over network\n", methodName);
-
 	if(mes.msgType==0x00) {
 
 		printf("[%s] FOUND THE CULPRIT ... buffer:%s \n", methodName, mes.buffer);
@@ -75,13 +73,13 @@ void safePushMessageinQ(int connSocket, struct Message mes,const char* methodNam
 	if(mes.msgType != 0x00)
 	{
 		LOCK_ON(&ConnectionMap[connSocket].mQLock) ;
-			//printf("[Reader] LOCK_ON(%d) ... Push into Q\n",connSocket);
+			printf("[Reader] LOCK_ON(%d) ... Push into Q\n",connSocket);
 
 			(ConnectionMap[connSocket]).MessageQ.push_back(mes) ;
 
 		LOCK_OFF(&ConnectionMap[connSocket].mQLock) ;
 
-		//printf("[Reader] LOCK_OFF(%d) push\n",connSocket);
+		printf("[Reader] LOCK_OFF(%d) push\n",connSocket);
 
 		printf("[%s] \tPushed message into Q for socket:%d , size:%d, msgType:%02x\n",
 				methodName, connSocket, ConnectionMap[connSocket].MessageQ.size(), mes.msgType);
@@ -89,7 +87,7 @@ void safePushMessageinQ(int connSocket, struct Message mes,const char* methodNam
 	}
 	else {
 
-		printf("[%s]+++++++++++++ Empty message \n",methodName);
+		printf("[READER]+++++++++++++ Empty message sent by:%s\n",methodName);
 	}
 }
 
@@ -262,7 +260,7 @@ void floodStatusOnNetwork(int & reqSockfd, uint8_t ttl, unsigned int & dataLen, 
 
 		if( !(neighSocket == reqSockfd)){
 
-			printf("[Reader] \tStatus req send to: %d\n", (*it).first.portNo) ;
+			printf("[Reader] \tStatus req being \"Flooded to \" to: %d\n", (*it).first.portNo) ;
 
 			struct Message floodedStatusMsg ;
 			floodedStatusMsg.msgType = STATUS_REQ ;
@@ -525,7 +523,8 @@ void handleRequestByCase(int connSocketFd,
 
 	bool doBreak = false;
 	// Hello message received
-	if (msgType == HELLO_REQ){
+	if (msgType == HELLO_REQ)
+	{
 
 		//printf("[Reader] Hello request received\n");
 		receiveHelloAndBreakTheTie(buffer, dataLen, connSocketFd) ;
@@ -587,7 +586,7 @@ void handleRequestByCase(int connSocketFd,
 
 	}else if(msgType == STATUS_REQ){
 
-		//printf("[Reader] Received STATUS REQ ..... socket:%d\n" , connSocketFd);
+		printf("[Reader] Received STATUS REQ ..... socket:%d\n" , connSocketFd);
 
 		//printf("[Reader] STATUS1 ..... socket:%d\n" , connSocketFd);
 		// Cache lookup
@@ -598,7 +597,7 @@ void handleRequestByCase(int connSocketFd,
 			}
 		LOCK_OFF(&msgCacheLock) ;
 
-		//printf("[Reader] STATUS2 ..... socket:%d\n" , connSocketFd);
+		printf("[Reader] STATUS ..... the uoid not present in the cache |||| socket:%d\n" , connSocketFd);
 
 		struct CachePacket cachePacket;
 		cachePacket.reqSockfd = connSocketFd ;
@@ -611,7 +610,7 @@ void handleRequestByCase(int connSocketFd,
 
 		// Respond the sender with the status response
 
-		//printf("[Reader] Sending back STATUS RESPONSE\n");
+		printf("[Reader] Sending back STATUS RESPONSE\n");
 		struct Message statResponseMSG ;
 		memcpy(statResponseMSG.uoid , uoid , SHA_DIGEST_LENGTH);
 
@@ -640,7 +639,7 @@ void handleRequestByCase(int connSocketFd,
 //		safePushMessageinQ(connSocketFd, statResponseMSG);
 		LOCK_ON(&ConnectionMap[connSocketFd].mQLock) ;
 			//printf("[Reader] LOCK_ON(%d) 5 \n",connSocketFd);
-			//printf("[Reader] *** Inside critical section... socket:%d\n" , connSocketFd);
+			printf("[Reader] *** Inside critical section... socket:%d\n" , connSocketFd);
 			ConnectionMap[connSocketFd].MessageQ.push_back(statResponseMSG) ;
 
 		LOCK_OFF(&ConnectionMap[connSocketFd].mQLock) ;
@@ -649,7 +648,7 @@ void handleRequestByCase(int connSocketFd,
 
 		if (metadata->ttl > 0 && ttl >= 1){
 
-			//printf("[Reader] About to flood to neighbours\n");
+			printf("[Reader] About to flood to neighbours\n");
 			floodStatusOnNetwork(connSocketFd, ttl, dataLen, buffer, uoid);
 
 		}
@@ -681,26 +680,51 @@ void handleRequestByCase(int connSocketFd,
 		//printf("[Reader] Received STATUS ... cache check \n" );
 
 
-		if (MessageCache.find( TO_STRING((const char *)originalMsg_UOID , SHA_DIGEST_LENGTH)) != MessageCache.end()){
-
+		if (MessageCache.find( TO_STRING((const char *)originalMsg_UOID , SHA_DIGEST_LENGTH)) != MessageCache.end())
+		{
 			//message origiated from here
 			//printf("[Reader-%d] Received STATUS ... Message originated from this node...\n", connSocketFd) ;
-			if(MessageCache [ TO_STRING((const char *)originalMsg_UOID, SHA_DIGEST_LENGTH)   ].status == 1){
+			if(MessageCache [ TO_STRING((const char *)originalMsg_UOID, SHA_DIGEST_LENGTH)   ].status == 1)
+			{
 
 				//printf("[Reader] Received STATUS ... handleMsgToBeForwarded \n" );
 				handleMsgToBeForwarded(originalMsg_UOID, msgType, dataLen, buffer, uoid) ;
 
-			} else if (MessageCache [ TO_STRING((const char *)originalMsg_UOID , SHA_DIGEST_LENGTH) ].status == 0){
-
-				//printf("[Reader] Received STATUS status == 0 \n" );
-				// Case of status neighbors
-				//if(MessageCache [ TO_STRING((const char *)originalMsg_UOID, SHA_DIGEST_LENGTH)].status_type == 0x01){
-
-					//printf("[Reader] Received STATUS ... insert into status responses \n" );
+			} 
+			else if (MessageCache [ TO_STRING((const char *)originalMsg_UOID , SHA_DIGEST_LENGTH) ].status == 0)
+			{
+				//printf("[Reader] Received STATUS ... insert into status responses \n" );
+				if(MessageCache [ TO_STRING((const char *)originalMsg_UOID , SHA_DIGEST_LENGTH) ].status_type=0x01)
+				{
 					handleStatusNeighboursCommand(tempLength, dataLen, buffer, n) ;
-				//}
+				}
+				else
+				{
+					LOCK_ON(&statusMsgLock);
+					if(statusTimerFlag)
+					{
+						int totalLengthTillHPHN = tempLength + 22;
+						if(totalLengthTillHPHN < (int)dataLen)
+						{
+							UINT recordLen = 0;
+							memcpy((UINT*)&recordLen,&buffer[totalLengthTillHPHN],4);
+							if(recordLen == 0)
+								recordLen = dataLen - totalLengthTillHPHN;
+							
+							string dataRecord((char*)&buffer[totalLengthTillHPHN],recordLen);
+							statusFilesResponsesOfNodes[n].push_front(dataRecord);
+						}
+						else
+						{
+							statusFilesResponsesOfNodes[n];
+						}
+					}
+					LOCK_OFF(&statusMsgLock) ;
+				}
 			}
-		} else {
+		} 
+		else 
+		{
 
 			//printf("[Reader] Received STATUS ... Message not from here.. return\n");
 			return;
@@ -796,25 +820,20 @@ void handleRequestByCase(int connSocketFd,
 
 
 
-			printf("[Reader]\t ...... MessageCache ............");
-			for(CACHEPACKET_MAP::iterator iter = MessageCache.begin(); iter!= MessageCache.end(); iter++) {
+		printf("[Reader]\t ...... MessageCache ............");
+		for(CACHEPACKET_MAP::iterator iter = MessageCache.begin(); iter!= MessageCache.end(); iter++) {
 
-				string sUoid = (*iter).first;
-				struct CachePacket pkt = (*iter).second;
-				printf("[Reader]\t\tuoid=%02x , Packet{sock=%d, status=%d}\n",
-								sUoid.c_str(), 	pkt.reqSockfd, 	  pkt.status );
-			}
+			string sUoid = (*iter).first;
+			struct CachePacket pkt = (*iter).second;
+			printf("[Reader]\t\tuoid=%s , Packet{sock=%d, status=%d}\n",
+					        sUoid.c_str(), 	pkt.reqSockfd, 	  pkt.status );
+		}
 
+		printf("[Reader]\t lookup uoid:%s\n", uoidStr.c_str());
 
-		printf("[Reader]\t Lookup uoid:%s\n", uoidStr.c_str());
+		if(MessageCache.find(uoidStr) == MessageCache.end()) {
 
-
-		bool msgNotinCache = (MessageCache.find(uoidStr) == MessageCache.end());
-
-
-		if(msgNotinCache) {
-
-			printf("[Reader] \t __NEW__ Store request, couldn't find in MsgCache\n");
+			printf("[Reader] \t NEW Store request, couldn't find in MsgCache\n");
 
 			LOCK_OFF(&msgCacheLock);
 
@@ -825,7 +844,6 @@ void handleRequestByCase(int connSocketFd,
 
 
 			LOCK_ON(&msgCacheLock);
-				printf("[Reader] \t _________________ ADD PACKET TO MSG_CACHE __________________\n");
 				MessageCache[uoidStr] = packet;
 			LOCK_OFF(&msgCacheLock);
 
@@ -834,99 +852,48 @@ void handleRequestByCase(int connSocketFd,
 			if(coinFlip <= metadata->storeProb) {
 
 				printf("[Reader] \tStore... accept and keep this store message locally\n");
+				//TODO:write file to cache
+				string strMetaData((char *)&buffer[4], dataLen);
 
-				// Write file to cache
-				printf("[Reader]\tStore... to string buffer:%s, datalen:%d\n", buffer, dataLen);
-				string strMetaData((char *)buffer, dataLen);
+				struct FileMetadata fileMetadata ;//= readMetaDataFromStr(strMetaData.c_str());
 
-				printf("[Reader] \tStore... parse string for metadata struct\n");
-				struct FileMetadata constructedFileMeta = createMetadataFromString(strMetaData);
-				fflush(stdout);
+				//TODO: check the indexes if file exists
+				bool doesFileExist = false; // lookupIndices();
 
-				// Check the indexes if file exists
-				bool doesFileExist = (FileNameIndexMap.find((char *)constructedFileMeta.fName) != FileNameIndexMap.end());
-
-				/**
-				 int doesFileExist(struct metaData metadata)
-				{
-						list<int > tempList = fileNameSearch(metadata.fileName);
-						for(list<int> ::iterator it = tempList.begin();it!=tempList.end();it++)
-						{
-								struct metaData metadata_temp = populateMetaData((*it));
-								if(strncmp((char *)metadata_temp.nonce, (char *)metadata.nonce, 20)==0)
-										return (*it);
-						}
-						return -1;
-				}
-				 */
-
-				fflush(stdout);
-
-				int latestFileNumber = -1;
 				if(doesFileExist) {
 
-					printf("[Reader]\tStore... Metadata file DOES exist\n");
+					// update the LRU
 
-					list<int> fNumbers = FileNameIndexMap[(char *)constructedFileMeta.fName];
-			        for(list<int>::iterator itFNum = fNumbers.begin() ; itFNum!=fNumbers.end() ; itFNum++)
-			        {
-			        		printf("[Reader]\tStore... Read meta file from DISK\n");
-			                struct FileMetadata tempFileMeta = createFileMetadata((*itFNum));
-			                if(strncmp((char *)constructedFileMeta.NONCE,
-			                		(char *)tempFileMeta.NONCE, 20)   ==    0) {
-
-			                        printf ("[Reader] \t Got latest file number : %d\n",*itFNum);
-			                        latestFileNumber = *itFNum;
-			                        break;
-			                }
-			        }
-
-			        printf("[Reader] \tStore... lookup latestFileNumber:%d in FileNameIndexMap[%s]\n",
-													latestFileNumber, (char *)constructedFileMeta.fName);
-
-
-			        if(latestFileNumber != -1) {
-
-						// update the LRU
-						printf("[Reader] \t Store .. Update LRU , FileNumber:%d already exists", latestFileNumber);
-						updateLRU(latestFileNumber);
-			        }
-				}
-
-				if(latestFileNumber == -1) {
+				} 
+				else 
+				{
 
 					int fileNumber = incfNumber();  //update global file number
 					bool success=false;
-					printf("[Reader] \t Store .. Add:%d to LRU\n", fileNumber);
-					success = addToLRU((int)fileNumber, constructedFileMeta);
+					// success = storeInLRU();
 
 					if(success) {
 
 						// write data
-						printf("[Reader] Write temp file(%s) to final data file (%s)\n",
-											tempFileName, 		constructedFileMeta.fName);
 						FILE* tempFile = fopen(tempFileName, "rb");
-						FILE* dataFile = fopen((char *)constructedFileMeta.fName, "wb");
+						FILE* dataFile = fopen((char *)fileMetadata.fName, "wb");
 						char letter;
 						while(fread(&letter, 1, 1, tempFile)) {
 
 							fwrite(&letter, 1, 1, dataFile);
 						}
 						fclose(tempFile);
-
 						int closeRet = fclose(dataFile);
 						if(closeRet != 0) {
 
 							printf("[Reader] ERROR:Closing data file FAILED! Try emptying space!!\n");
-							/**
-							 * Todo: check disk quota here
-							 */
+
 						} else {
 
 							printf("[Reader] \tStore... write metadata to file\n");
+							writeMetadataToFile(fileMetadata, fileNumber);
 
-							writeMetadataToFile(constructedFileMeta, fileNumber);
-							populateIndexes(constructedFileMeta , fileNumber);
+							populateIndexes(fileMetadata , fileNumber);
 						}
 					}
 				}
@@ -987,254 +954,7 @@ void handleRequestByCase(int connSocketFd,
 			LOCK_OFF(&msgCacheLock);
 			return;
 		}
-
 		printf("[Writer]\t Store... req handling done!!!\n");
-
-	} else if(msgType == SEARCH_RSP) {
-
-		 printf("[Reader]\tSearch Response handling\n") ;
-
-         UCHAR searchReqUOID[SHA_DIGEST_LENGTH] ;
-         MEMSET_ZERO(searchReqUOID, SHA_DIGEST_LENGTH);
-         memcpy((UCHAR *)searchReqUOID, &buffer[0], SHA_DIGEST_LENGTH);
-
-         string strSearchReqUID((const char *)searchReqUOID, SHA_DIGEST_LENGTH);
-         bool originatedHere = MessageCache.find(strSearchReqUID) != MessageCache.end();
-
-         if (originatedHere) {
-
-             //message originated from here
-             if (MessageCache[strSearchReqUID].status == 0){
-
-                     LOCK_ON(&searchMsgLock) ;
-
-                     bool searchTimer = true;
-                     if (!searchTimer){
-
-                    	 doLog((unsigned char *)"// Search response received after user hit CTR+C\n");
-
-                     } else {
-
-                             list<struct FileMetadata> searchResList ;
-
-                             uint32_t templen = 0 ;
-                             UINT dataCounter = 20 ;
-
-                             bool bNothing = false;
-                             int iNothing = 10;
-                             float fNothing = 5.5f;
-                             double dNothing = 99.2f;
-
-                             while ( dataCounter < dataLen){
-
-                            	 	 templen = 0 ;
-
-									 if(bNothing)			iNothing--;
-                            	 	 else					fNothing++;
-
-
-                                     memcpy((UINT *)&templen, &buffer[dataCounter], 4) ;
-
-									 iNothing--;
-                            	 	 dNothing++;
-
-
-                                     if (templen == 0){
-                                             templen = dataLen - 20 - 4 - dataCounter  ;
-                                     }
-
-									 if(bNothing)			iNothing--;
-                            	 	 else					fNothing++;
-
-                                     dataCounter += 4 ;
-
-                                     UCHAR fileIDtemp[20] ;
-
-                                     bNothing = !bNothing;
-                                     MEMSET_ZERO(fileIDtemp, 20);
-
-                                     iNothing--;
-
-                                     memcpy(fileIDtemp, buffer+dataCounter, 20);
-
-                                     //for(int f = 0 ; f < 20 ; ++f)
-                                       //      fileIDtemp[f] = buffer[i+f] ;
-
-									 if(!bNothing)			fNothing--;
-                            	 	 else					dNothing++;
-
-                                     dataCounter += 20 ;
-
-                                     iNothing--;
-
-                                     string metaStr((const char *)&buffer[dataCounter-20], templen+20) ;
-
-                            	 	 fNothing+=0.5;
-                            	 	 if(!bNothing)			fNothing--;
-                            	 	 else					dNothing++;
-
-
-                                     dataCounter = dataCounter +templen;
-
-                                     // struct metaData newMeta = populateMetaDataFromString((unsigned char *)metaStr.c_str()) ;
-                                     //struct FileMetadata newMeta =  ;
-                                     searchResList.push_front(createMetadataFromString(metaStr)) ;
-
-                                     dNothing = dNothing-1;
-                             }
-
-                             for(list<FileMetadata>::iterator meta = searchResList.begin();
-                            		 meta!= searchResList.end();
-                            		 meta++)
-                             {
-                            	 	 printf("[Reader]\tDisplay file metadata............ ");
-                            	 	 displayFileMetadata(*meta) ;
-                             }
-                     }
-
-                     LOCK_OFF(&searchMsgLock) ;
-
-             } else if(MessageCache[strSearchReqUID].status == 1){
-
-            	 //Message originated from somewhere else, needs to be forwarded
-                     // Message was forwarded from this node, see the receivedFrom member
-
-            	 	 struct Message fwdSearchResponse;
-
-                     LOCK_ON(&msgCacheLock) ;
-                     	 int return_sock = MessageCache[ strSearchReqUID ].reqSockfd ;
-                     LOCK_OFF(&msgCacheLock) ;
-
-                     fwdSearchResponse.buffer = (unsigned char *)malloc((dataLen + 1)) ;
-                     fwdSearchResponse.buffer[dataLen] = '\0' ;
-
-                     MEMSET_ZERO(fwdSearchResponse.uoid, SHA_DIGEST_LENGTH);
-
-                     memcpy(fwdSearchResponse.uoid, uoid, SHA_DIGEST_LENGTH);
-                     memcpy(fwdSearchResponse.buffer, buffer, (int)dataLen);
-
-                     fwdSearchResponse.msgType = SEARCH_RSP ;
-
-                     fwdSearchResponse.status = 1 ;
-                     fwdSearchResponse.ttl = 1 ;
-
-                     fwdSearchResponse.dataLen = dataLen ;
-
-                     safePushMessageinQ(return_sock, fwdSearchResponse, "Reader") ;
-             }
-         } else {
-
-        	printf("[Reader]\t Search response... Search request was never forwarded from this node.\n") ;
-        	return ;
-         }
-
-	} else if(msgType == SEARCH_REQ) {
-
-        printf("[Reader] \tSearch request received\n") ;
-
-        // Check if the message has already been received or not
-		string strUOID ((const char *)uoid, SHA_DIGEST_LENGTH);
-
-		LOCK_ON(&msgCacheLock) ;
-        	bool foundInCache = (MessageCache.find( strUOID ) != MessageCache.end());
-        LOCK_OFF(&msgCacheLock) ;
-
-        if (foundInCache){
-
-        	printf("[Reader] \tMessage has already been received.\n") ;
-            return ;
-
-        } else {
-
-            uint8_t status_type = 0 ;
-            memcpy(&status_type, buffer, 1) ;
-
-            // push search response
-
-            // Respond the sender with the Search response
-            struct Message respMsg ;
-            respMsg.q_type = status_type ;
-            respMsg.status = 0;
-            respMsg.msgType = SEARCH_RSP ;
-            respMsg.dataLen = dataLen ;
-            respMsg.query = (UCHAR *)malloc(dataLen) ;
-            respMsg.ttl = 1 ;
-
-            MEMSET_ZERO(respMsg.uoid, SHA_DIGEST_LENGTH);
-            memcpy(respMsg.uoid , uoid , SHA_DIGEST_LENGTH);
-
-            memcpy(respMsg.query , buffer+1, dataLen-1);
-            respMsg.query[dataLen-1] = '\0' ;
-
-
-            struct CachePacket packet;
-            packet.reqSockfd = connSocketFd ;
-            packet.status = 1 ;
-            packet.msgLifetimeInCache = metadata->msgLifeTime;
-
-            LOCK_ON(&msgCacheLock) ;
-            	MessageCache[ strUOID ] = packet ;
-            LOCK_OFF(&msgCacheLock) ;
-
-            printf("[Reader]\t Send response back\n");
-            safePushMessageinQ(connSocketFd, respMsg , "Reader") ;
-
-            ttl = ttl -1 ;
-
-            // Flood the request message to neighbours
-            if ( metadata->ttl > 0 && ttl >= 1 ){
-
-                    LOCK_ON(&currentNeighboursLock) ;
-
-						for (NEIGHBOUR_MAP_ITERATOR it = currentNeighbours.begin(); it != currentNeighbours.end(); ++it)
-						{
-							int neighSocket = (*it).second;
-
-								int iNothing = 10;
-
-								if( neighSocket == connSocketFd ){
-									continue;
-								}
-
-								bool doNothing = false;
-								float fNothing = 0.5;
-
-								struct Message fwdRequest ;
-
-								if(doNothing)
-									fNothing = 1.7;
-								else
-									iNothing = 100;
-
-								fwdRequest.dataLen = dataLen ;
-								fNothing = 1.7;
-								fwdRequest.msgType = SEARCH_REQ ;
-
-								fNothing--;
-								iNothing = 100;
-								fwdRequest.ttl = (UINT)(ttl) < (UINT)metadata->ttl ? (ttl) : metadata->ttl  ;
-
-
-								if(doNothing)
-									fNothing = 1.7;
-								else
-									iNothing = 100;
-
-								MEMSET_ZERO(fwdRequest.uoid, SHA_DIGEST_LENGTH) ;
-								memcpy(fwdRequest.uoid , uoid, 20);
-
-								fwdRequest.status = 1;
-								fwdRequest.buffer = (UCHAR *)malloc(dataLen) ;
-								MEMSET_ZERO(fwdRequest.buffer, dataLen);
-								memcpy(fwdRequest.buffer , buffer , dataLen);
-
-								printf("[Reader]\t -> Flood Search Request to neighbour:%d\n", neighSocket);
-								safePushMessageinQ(neighSocket, fwdRequest, "Reader") ;
-						}
-
-                    LOCK_OFF(&currentNeighboursLock);
-            }
-        }
 	}
 
 	//printf("[Reader] \t Reset keepalive\n");
@@ -1342,7 +1062,12 @@ void *connectionReaderThread(void *args) {
 			deleteFromNeighboursAndCloseConnection (connSocket);
 			break;
 		}
-
+		
+		if(messageType == 0xAC)
+		{
+			printf("[Reader] I recieved the status request message now....\n");
+		}
+		
 		bytesReadTillNow += bytesRead;
 
 		doBreak = checkIfReaderLoopShouldBreak (connSocket, doBreak) ;
@@ -1425,6 +1150,15 @@ void *connectionReaderThread(void *args) {
 			body[bufferDataLength] = '\0' ;
 		}
 
+		if(!(joinNetworkPhaseFlag && messageType == 0xfa))
+		{
+			LOCK_ON(&logEntryLock);
+			unsigned char *loggie = prepareLogRecord('r',connSocket,header,body);
+			if(loggie!=NULL)
+				doLog(loggie);
+			LOCK_OFF(&logEntryLock);
+		}
+		
 		if(bytesRead != bufferDataLength) 
 		{
 			printf("Complete data couldnt be read\n");

@@ -333,8 +333,16 @@ UCHAR *prepareLogRecord(UCHAR mode,
 //this functions writes the passed string into the log entry
 void doLog(UCHAR *tobewrittendata)
 {
+	bool doFlag = false;
+
 	//printf("[Log]\treached here %s\n",tobewrittendata);
 	fprintf(loggerRef, "%s", tobewrittendata);
+
+	int iNoth=10;
+	if(doFlag) {
+		iNoth--;
+	}
+
 	fflush(loggerRef);
 }
 

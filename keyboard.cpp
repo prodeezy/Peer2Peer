@@ -359,7 +359,7 @@ void *keyboard_thread(void *dummy)
 		{
 			unsigned char* token;
 			
-			printf("The search command caught is:%s\n",input);
+			printf("[Keyboard] Fire Search command is:%s\n",input);
 			
 			token=(unsigned char*)strtok((char*)input," ");
 			
@@ -369,51 +369,28 @@ void *keyboard_thread(void *dummy)
 			
 			unsigned char* pattern;
 			pattern=token;
-			printf("The value that is to be searched against is:%s",pattern);
+			printf("[Keyboard] The value that is to be searched against is:%s",pattern);
 			
 			token=(unsigned char*)strtok(NULL,"\n");
 			unsigned char* value;
 			value=token;
-			printf("\t the value is:%s\n",value);
+			printf("[Keyboard]\t the value is:%s\n",value);
 			list <string> keyword_search;
 			//string SToken((char*)value);			
 			//Clear the search parameters first.
+
 			fileDisplayIndexMap.clear();
 			LOCK_ON(&countOfSearchResLock);
-			countOfSearchRes=0;
+				countOfSearchRes=0;
 			LOCK_OFF(&countOfSearchResLock);
 			
 			printf("The parameters are cleared\n");
 			if(!strcasecmp((char*)pattern,"keywords"))
 			{
-				/*
-				printf("the keywords are:\n");
-				int start=1;
-				int count=0;
-				for(int x=1;x<SToken.length();x++)
-				{
-					if(SToken[x]==' ')
-					{
-						string part(SToken,start,count);
-						printf("The part being pushed is:%s the start:%d count:%d\n",part.c_str(),start,count);
-						keyword_search.push_back(part);
-						count=0;
-						start=x+1;
-					}
-					else
-					{
-						count++;
-					}
-				}
-				if(count!=0)
-				{
-					string part(SToken,start,count-1);
-					printf("The part being pushed is:%s the start:%d count:%d\n",part.c_str(),start,count);
-					keyword_search.push_back(part);
-				}*/
-				
-				printf("Calling local keyword search method\n");
+				printf("[Keyboard] Calling local keyword search method\n");
+
 				initiateLocalKeywordSearch(value);
+
 				constructSearchMsg(value,0x03);
 				//break;
 			}
@@ -421,49 +398,57 @@ void *keyboard_thread(void *dummy)
 			if(!strcasecmp((char*)pattern,"sha1hash"))
 			{
 				unsigned char* hash=convertToHex(20, value);
-				printf("Calling local sha1 search method\n");
+				printf("[Keyboard] Calling local sha1 search method\n");
 				int y=0;
 				for(;y<SHA_DIGEST_LENGTH;)
 				{
 					printf("%02x",hash[y]);
 					y++;
 				}
+
 				initiateLocalSha1Search(value);
+
 				constructSearchMsg(value,0x02);
 			}
 			
 			if(!strcasecmp((char*)pattern,"filename"))
 			{
-				printf("Calling local filename search method for filename=%s\n",value);
+				printf("[Keyboard] Calling local filename search method for filename=%s\n",value);
+
 				//initiateLocalFilenameSearch(value);
+
 				bool ifExists = FileNameIndexMap.find((char*)value)!=FileNameIndexMap.end();
 				if(ifExists) {
-					
-						list<int> fNumbers = FileNameIndexMap[(char*)value];
-					for(list<int>::iterator listIter = fNumbers.begin();
-						listIter!=fNumbers.end();
-						listIter++) {
 
-								printf("\tFileNumber:%d\n", (*listIter));
+					printf("[Keyboard] File exists.. Initiate Local Filename Search\n");
+					list<int> fNumbers = FileNameIndexMap[(char*)value];
+
+					for(list<int>::iterator listIter = fNumbers.begin();
+							listIter!=fNumbers.end();
+							listIter++) {
+
+								printf("[Keyboard] \tFileNumber:%d\n", (*listIter));
 								
 								struct FileMetadata populatedFileMeta = createFileMetadata(*listIter);
-								printf("\tDone with createFileMetadata\n");
+								printf("[Keyboard] \tDone with createFileMetadata\n");
 								
 								pthread_mutex_lock(&countOfSearchResLock);
-								printf("\tThe value of countOfSearchRes is:%d\n",countOfSearchRes);
+								printf("[Keyboard] \tThe value of countOfSearchRes is:%d\n",countOfSearchRes);
 								countOfSearchRes++;
-								printf("\tThe value of countOfSearchRes is:%d\n",countOfSearchRes);
+								printf("[Keyboard] \tThe value of countOfSearchRes is:%d\n",countOfSearchRes);
 								fileDisplayIndexMap[countOfSearchRes]=populatedFileMeta;
-								printf("\tFile added to the fileDisplayIndexMap whose size is now:%d\n",fileDisplayIndexMap.size());
+								printf("[Keyboard] \tFile added to the fileDisplayIndexMap whose size is now:%d\n",fileDisplayIndexMap.size());
 								displayFileMetadata(populatedFileMeta);
 								pthread_mutex_unlock(&countOfSearchResLock);
 								
-								printf("\tNEXT FILE NUMBER\n");
+								printf("[Keyboard] \tNEXT FILE NUMBER\n");
 								fflush(stdout);
 						
 						}			
 											
 				}
+
+
 				constructSearchMsg(value,0x01);
 			}
 			//Use locks to prevent the keyboard from looping back-up

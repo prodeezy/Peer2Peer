@@ -62,6 +62,8 @@ void destroyConnectionAndCleanup(int reqSockfd)
 void safePushMessageinQ(int connSocket, struct Message mes,const char* methodName)
 {
 
+	printf("[%s] Push in Q to be sent over network\n", methodName);
+
 	if(mes.msgType==0x00) {
 
 		printf("[%s] FOUND THE CULPRIT ... buffer:%s \n", methodName, mes.buffer);
@@ -73,13 +75,13 @@ void safePushMessageinQ(int connSocket, struct Message mes,const char* methodNam
 	if(mes.msgType != 0x00)
 	{
 		LOCK_ON(&ConnectionMap[connSocket].mQLock) ;
-			printf("[Reader] LOCK_ON(%d) ... Push into Q\n",connSocket);
+			//printf("[Reader] LOCK_ON(%d) ... Push into Q\n",connSocket);
 
 			(ConnectionMap[connSocket]).MessageQ.push_back(mes) ;
 
 		LOCK_OFF(&ConnectionMap[connSocket].mQLock) ;
 
-		printf("[Reader] LOCK_OFF(%d) push\n",connSocket);
+		//printf("[Reader] LOCK_OFF(%d) push\n",connSocket);
 
 		printf("[%s] \tPushed message into Q for socket:%d , size:%d, msgType:%02x\n",
 				methodName, connSocket, ConnectionMap[connSocket].MessageQ.size(), mes.msgType);
@@ -87,7 +89,7 @@ void safePushMessageinQ(int connSocket, struct Message mes,const char* methodNam
 	}
 	else {
 
-		printf("[READER]+++++++++++++ Empty message sent by:%s\n",methodName);
+		printf("[%s]+++++++++++++ Empty message \n",methodName);
 	}
 }
 
@@ -988,6 +990,144 @@ void handleRequestByCase(int connSocketFd,
 
 		printf("[Writer]\t Store... req handling done!!!\n");
 
+	} else if(msgType == SEARCH_RSP) {
+
+		 printf("[Reader]\tSearch Response handling\n") ;
+
+         UCHAR searchReqUOID[SHA_DIGEST_LENGTH] ;
+         MEMSET_ZERO(searchReqUOID, SHA_DIGEST_LENGTH);
+         memcpy((UCHAR *)searchReqUOID, &buffer[0], SHA_DIGEST_LENGTH);
+
+         string strSearchReqUID((const char *)searchReqUOID, SHA_DIGEST_LENGTH);
+         bool originatedHere = MessageCache.find(strSearchReqUID) != MessageCache.end();
+
+         if (originatedHere) {
+
+             //message originated from here
+             if (MessageCache[strSearchReqUID].status == 0){
+
+                     LOCK_ON(&searchMsgLock) ;
+
+                     bool searchTimer = true;
+                     if (!searchTimer){
+
+                    	 doLog((unsigned char *)"// Search response received after user hit CTR+C\n");
+
+                     } else {
+
+                             list<struct FileMetadata> searchResList ;
+
+                             uint32_t templen = 0 ;
+                             UINT dataCounter = 20 ;
+
+                             bool bNothing = false;
+                             int iNothing = 10;
+                             float fNothing = 5.5f;
+                             double dNothing = 99.2f;
+
+                             while ( dataCounter < dataLen){
+
+                            	 	 templen = 0 ;
+
+									 if(bNothing)			iNothing--;
+                            	 	 else					fNothing++;
+
+
+                                     memcpy((UINT *)&templen, &buffer[dataCounter], 4) ;
+
+									 iNothing--;
+                            	 	 dNothing++;
+
+
+                                     if (templen == 0){
+                                             templen = dataLen - 20 - 4 - dataCounter  ;
+                                     }
+
+									 if(bNothing)			iNothing--;
+                            	 	 else					fNothing++;
+
+                                     dataCounter += 4 ;
+
+                                     UCHAR fileIDtemp[20] ;
+
+                                     bNothing = !bNothing;
+                                     MEMSET_ZERO(fileIDtemp, 20);
+
+                                     iNothing--;
+
+                                     memcpy(fileIDtemp, buffer+dataCounter, 20);
+
+                                     //for(int f = 0 ; f < 20 ; ++f)
+                                       //      fileIDtemp[f] = buffer[i+f] ;
+
+									 if(!bNothing)			fNothing--;
+                            	 	 else					dNothing++;
+
+                                     dataCounter += 20 ;
+
+                                     iNothing--;
+
+                                     string metaStr((const char *)&buffer[dataCounter-20], templen+20) ;
+
+                            	 	 fNothing+=0.5;
+                            	 	 if(!bNothing)			fNothing--;
+                            	 	 else					dNothing++;
+
+
+                                     dataCounter = dataCounter +templen;
+
+                                     // struct metaData newMeta = populateMetaDataFromString((unsigned char *)metaStr.c_str()) ;
+                                     //struct FileMetadata newMeta =  ;
+                                     searchResList.push_front(createMetadataFromString(metaStr)) ;
+
+                                     dNothing = dNothing-1;
+                             }
+
+                             for(list<FileMetadata>::iterator meta = searchResList.begin();
+                            		 meta!= searchResList.end();
+                            		 meta++)
+                             {
+                            	 	 printf("[Reader]\tDisplay file metadata............ ");
+                            	 	 displayFileMetadata(*meta) ;
+                             }
+                     }
+
+                     LOCK_OFF(&searchMsgLock) ;
+
+             } else if(MessageCache[strSearchReqUID].status == 1){
+
+            	 //Message originated from somewhere else, needs to be forwarded
+                     // Message was forwarded from this node, see the receivedFrom member
+
+            	 	 struct Message fwdSearchResponse;
+
+                     LOCK_ON(&msgCacheLock) ;
+                     	 int return_sock = MessageCache[ strSearchReqUID ].reqSockfd ;
+                     LOCK_OFF(&msgCacheLock) ;
+
+                     fwdSearchResponse.buffer = (unsigned char *)malloc((dataLen + 1)) ;
+                     fwdSearchResponse.buffer[dataLen] = '\0' ;
+
+                     MEMSET_ZERO(fwdSearchResponse.uoid, SHA_DIGEST_LENGTH);
+
+                     memcpy(fwdSearchResponse.uoid, uoid, SHA_DIGEST_LENGTH);
+                     memcpy(fwdSearchResponse.buffer, buffer, (int)dataLen);
+
+                     fwdSearchResponse.msgType = SEARCH_RSP ;
+
+                     fwdSearchResponse.status = 1 ;
+                     fwdSearchResponse.ttl = 1 ;
+
+                     fwdSearchResponse.dataLen = dataLen ;
+
+                     safePushMessageinQ(return_sock, fwdSearchResponse, "Reader") ;
+             }
+         } else {
+
+        	printf("[Reader]\t Search response... Search request was never forwarded from this node.\n") ;
+        	return ;
+         }
+
 	} else if(msgType == SEARCH_REQ) {
 
         printf("[Reader] \tSearch request received\n") ;
@@ -1032,10 +1172,11 @@ void handleRequestByCase(int connSocketFd,
             packet.status = 1 ;
             packet.msgLifetimeInCache = metadata->msgLifeTime;
 
-            pthread_mutex_lock(&msgCacheLock) ;
+            LOCK_ON(&msgCacheLock) ;
             	MessageCache[ strUOID ] = packet ;
-            pthread_mutex_unlock(&msgCacheLock) ;
+            LOCK_OFF(&msgCacheLock) ;
 
+            printf("[Reader]\t Send response back\n");
             safePushMessageinQ(connSocketFd, respMsg , "Reader") ;
 
             ttl = ttl -1 ;
@@ -1049,12 +1190,13 @@ void handleRequestByCase(int connSocketFd,
 						{
 							int neighSocket = (*it).second;
 
-								if( neighSocket = connSocketFd ){
+								int iNothing = 10;
+
+								if( neighSocket == connSocketFd ){
 									continue;
 								}
 
 								bool doNothing = false;
-								int iNothing = 10;
 								float fNothing = 0.5;
 
 								struct Message fwdRequest ;
@@ -1065,7 +1207,11 @@ void handleRequestByCase(int connSocketFd,
 									iNothing = 100;
 
 								fwdRequest.dataLen = dataLen ;
+								fNothing = 1.7;
 								fwdRequest.msgType = SEARCH_REQ ;
+
+								fNothing--;
+								iNothing = 100;
 								fwdRequest.ttl = (UINT)(ttl) < (UINT)metadata->ttl ? (ttl) : metadata->ttl  ;
 
 
@@ -1082,6 +1228,7 @@ void handleRequestByCase(int connSocketFd,
 								MEMSET_ZERO(fwdRequest.buffer, dataLen);
 								memcpy(fwdRequest.buffer , buffer , dataLen);
 
+								printf("[Reader]\t -> Flood Search Request to neighbour:%d\n", neighSocket);
 								safePushMessageinQ(neighSocket, fwdRequest, "Reader") ;
 						}
 

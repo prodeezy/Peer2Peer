@@ -747,7 +747,15 @@ void *connectionWriterThread(void *args) {
 		}
         else if (outgoingMsg.msgType == SEARCH_REQ){
 
-        	header[0] = STATUS_REQ;
+        	printf("[Writer] Search request sending message.. {len:%d, buf:\0, status:%d, qType:%02x, q=%s}\n",
+																outgoingMsg.dataLen,
+																outgoingMsg.status,
+																(char)outgoingMsg.q_type,
+																(char *)outgoingMsg.query);
+
+        	fflush(stdout);
+
+        	header[0] = SEARCH_REQ;
 
         	bool doNothing = false;
 
@@ -766,7 +774,12 @@ void *connectionWriterThread(void *args) {
 
                     fNothing = 1.5f;
 
-                    buffer = (UCHAR *)malloc(outgoingMsg.dataLen + 1) ;
+                    UCHAR *buffer1 = (UCHAR *)malloc(outgoingMsg.dataLen + 1) ;
+
+                    buffer = buffer1;
+
+                    //buffer
+        //            buffer = (UCHAR *)malloc(12) ;
                     bufferLength += 1;
 
 
@@ -1024,7 +1037,7 @@ void *connectionWriterThread(void *args) {
             UCHAR chunk[8192] ;
             // read the content of the file and write on the socket
             //while(!feof(fp)){
-            /***            while(1){
+            while(1){
                     memset(chunk, '\0' , 8192) ;
                     int numBytes = fread(chunk, 1, 8192, fileRef) ;
                     totalBytes += numBytes;
@@ -1034,9 +1047,9 @@ void *connectionWriterThread(void *args) {
                     if(numBytes == 0)
                             break;
                     write(connSocket, chunk, numBytes) ;
-            }**/
+            }
 
-
+/**
 			for(;;) {
 
 				MEMSET_ZERO(fileChunk, 1) ;
@@ -1066,7 +1079,7 @@ void *connectionWriterThread(void *args) {
 									fileChunk, (int)fileStat.st_size,numBytes, bytesWrittenTillNow);
 				fflush(stdout);
 			}
-
+**/
 			if(fileRef != NULL) {
 
 				printf("[Writer] \t..... CLOSE fileRef\n");

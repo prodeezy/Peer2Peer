@@ -14,6 +14,7 @@ using namespace std;
 
 #define CONN_SOCKET_MSG_Q(socket) 		ConnectionMap[socket].MessageQ
 
+
 int makeTCPPipe(UCHAR *hostName, unsigned int portNum ){
 
 	//printf("[%s]\tConnect to %s : %d\n", context, hostName, portNum);
@@ -50,25 +51,101 @@ int makeTCPPipe(UCHAR *hostName, unsigned int portNum ){
 
 }
 
+string toStringMetaData(struct FileMetadata metadata) {
 
- string toStringMetaData(struct FileMetadata metadata) {
+   string strMetadata;
 
-    string strMetadata;
+   strMetadata.append("[metadata]");
+   strMetadata.append("\nFileName=");
+   strMetadata.append((char *)metadata.fName);
 
-    strMetadata.append("[metadata]");
-    strMetadata.append("\nFileName=");    
-    strMetadata.append((char *)metadata.fName);
-
-    strMetadata.append("\nFileSize=");
-    int strLen = strMetadata.size();
-    strMetadata.resize(strLen+4) ;
+   strMetadata.append("\nFileSize=");
+   int strLen = strMetadata.size();
+   strMetadata.resize(strLen+4) ;
 //    sprintf(&strMetadata[strLen], "%d", metadata.fSize);
 
-    
+
+   sprintf(&strMetadata[strLen], "%d\n",  metadata.fSize);
+   strMetadata.resize(strlen(strMetadata.c_str())) ;
+
+   printf("[Writer] metadata str ........ %s", strMetadata.c_str());
+
+   strMetadata.append("SHA1=") ;
+   strLen = strMetadata.size() ;
+   strMetadata.resize(strLen+40) ;
+//printf("\n\n");
+   for(int i=0;i<20;i++)
+   {
+		   sprintf(&strMetadata[strLen+i*2], "%02x", metadata.SHA1[i]);
+		   //printf("%02x", metadata.sha1[i]);
+   }
+   //printf("\n\n");
+   strMetadata.append("\nNonce=") ;
+   strLen = strMetadata.size() ;
+   strMetadata.resize(strLen+40) ;
+   for(int i=0;i<20;i++)
+		   sprintf(&strMetadata[strLen+i*2], "%02x", metadata.NONCE[i]);
+
+   strMetadata.append("\nKeywords=") ;
+   strLen = strMetadata.size() ;
+   for (list<string >::iterator it = metadata.keywords->begin(); it != metadata.keywords->end(); ++it){
+		   strMetadata.append((*it)) ;
+		   strMetadata.append(" ") ;
+   }
+   strMetadata.resize(strMetadata.size() -1) ;
+
+	   printf("[Writer] metadata str ........ %s", strMetadata.c_str());
+/**
+   strMetadata.append("\nKeywords=");
+   list<string> keywordList = metadata.keywords;
+   for(list<string>::iterator iter=keywordList.begin(); iter!=keywordList.end(); iter++) {
+
+	   strMetadata.append((*iter));
+	   if( iter++ != keywordList.end()) {
+		   strMetadata.append(" ");
+	   }
+	   iter--;
+   }
+   **/
+   strMetadata.append("\nBit-vector=");
+
+   strLen = strMetadata.length();
+	   strMetadata.resize(strLen+256) ;
+	   for(int i=0;i<128;i++)
+			   sprintf(&strMetadata[strLen+i*2], "%02x", metadata.bitVector[i]);
+	   strMetadata.resize(strMetadata.size()+1) ;
+	   strMetadata[strLen+256] = '\0' ;
+	   printf("Bit-vector=======>\n");
+	   for(int f=0;f<128;f++)
+			   printf("%02x", metadata.bitVector[f]);
+   memcpy(&strMetadata[strLen], metadata.bitVector, 128);
+
+   printf("[Writer] metadata str : %02x, strlen(metadata):%d\n", strMetadata.c_str(), strlen(strMetadata.c_str()));
+
+   return strMetadata;
+}
+
+
+
+/**
+ string toStringMetaData(struct FileMetadata metadata) {
+
+	string strMetadata;
+
+	strMetadata.append("[metadata]");
+	strMetadata.append("\nFileName=");	
+	strMetadata.append((char *)metadata.fName);
+
+	strMetadata.append("\nFileSize=");
+	int strLen = strMetadata.size();
+	strMetadata.resize(strLen+4) ;
+//	sprintf(&strMetadata[strLen], "%d", metadata.fSize);
+
+	
     sprintf(&strMetadata[strLen], "%d\n",  metadata.fSize);
     strMetadata.resize(strlen(strMetadata.c_str())) ;
-                
-        printf("[Writer] metadata str ........ %s", strMetadata.c_str());
+				
+		printf("[Writer] metadata str ........ %s", strMetadata.c_str());
 
                 strMetadata.append("SHA1=") ;
                 strLen = strMetadata.size() ;
@@ -95,36 +172,19 @@ int makeTCPPipe(UCHAR *hostName, unsigned int portNum ){
                 }
                 strMetadata.resize(strMetadata.size() -1) ;
 
-        printf("[Writer] metadata str ........ %s", strMetadata.c_str());
-/**
-    strMetadata.append("\nKeywords=");
-    list<string> keywordList = metadata.keywords;
-    for(list<string>::iterator iter=keywordList.begin(); iter!=keywordList.end(); iter++) {
+		printf("[Writer] metadata str ........ %s", strMetadata.c_str());
 
-        strMetadata.append((*iter));
-        if( iter++ != keywordList.end()) {
-            strMetadata.append(" ");
-        }
-        iter--;
-    }
-    **/
-    strMetadata.append("\nBit-vector=");
-    
-    strLen = strMetadata.length();
-	strMetadata.resize(strLen+256) ;
-	for(int i=0;i<128;i++)
-		sprintf(&strMetadata[strLen+i*2], "%02x", metadata.bitVector[i]);
-	strMetadata.resize(strMetadata.size()+1) ;
-	strMetadata[strLen+256] = '\0' ;
-	printf("Bit-vector=======>\n");
-	for(int f=0;f<128;f++)
-		printf("%02x", metadata.bitVector[f]);
-    memcpy(&strMetadata[strLen], metadata.bitVector, 128);
-    
-    printf("[Writer] metadata str : %02x, strlen(metadata):%d\n", strMetadata.c_str(), strlen(strMetadata.c_str()));
+	strMetadata.append("\nBit-vector=");
+	
+	strLen = strMetadata.length();
+	strMetadata.resize(strLen+128);
+	memcpy(&strMetadata[strLen], metadata.bitVector, 128);
+	
+	printf("[Writer] metadata str : %s, strlen(metadata):%d\n", strMetadata.c_str(), strlen(strMetadata.c_str()));
 
-    return strMetadata;
+	return strMetadata;
 }
+**/
 
 /**
  * - Decide whether or not to send STORE message to neighbour
@@ -151,7 +211,7 @@ void fireSTORERequest(struct FileMetadata fileMetadata, char *fileName) {
 
 	// generate UOID
 	UCHAR uoid[SHA_DIGEST_LENGTH] ;
-	GetUOID( const_cast<char *>("msg"), uoid, SHA_DIGEST_LENGTH) ;
+	GetUOID( const_cast<char *>("msg"), uoid, SHA_DIGEST_LENGTH, "FireStore") ;
 
 
 
@@ -244,13 +304,16 @@ void *connectionWriterThread(void *args) {
 			break;
 		}
 
+		printf("[Writer]--------------- Pick and Write a message from Q\n");
+		fflush(stdout);
+
 		if(msgQSize > 0){
 
 
 			LOCK_ON(&ConnectionMap[connSocket].mQLock) ;
 
 				//printf("[Writer] LOCK_ON1(%d)\n",connSocket);
-				//printf("[Writer] pick next outgoing message ...\n");
+				printf("[Writer] \tPick NEXT outgoing message ...\n");
 				outgoingMsg = CONN_SOCKET_MSG_Q(connSocket).front() ;
 				CONN_SOCKET_MSG_Q(connSocket).pop_front() ;
 
@@ -259,7 +322,7 @@ void *connectionWriterThread(void *args) {
 
 		} else {
 
-			//printf("[Writer] messageQ is empty!\n");
+			printf("[Writer] \tMessageQ is empty! Continue\n");
 			bool doBreak = false;
 			bool doContinue = false;
 
@@ -282,6 +345,7 @@ void *connectionWriterThread(void *args) {
 
 			if(doContinue){
 				//printf("[Writer] ... Continue ...\n");
+				sleep(1);
 				continue;
 			}
 
@@ -294,8 +358,6 @@ void *connectionWriterThread(void *args) {
 			break;
 		}
 
-		printf("[Writer]--------------- Write a message from Q\n");
-		fflush(stdout);
 
 		// Message originated from here
 		switch(outgoingMsg.status) {
@@ -305,9 +367,11 @@ void *connectionWriterThread(void *args) {
 				fflush(stdout);
 
 				UCHAR uoid[SHA_DIGEST_LENGTH] ;
-				GetUOID( const_cast<char *> ("msg"), uoid, sizeof(uoid)) ;
+				MEMSET_ZERO(uoid, SHA_DIGEST_LENGTH);
+				GetUOID( const_cast<char *> ("msg"), uoid, SHA_DIGEST_LENGTH, "WriterThread") ;
 
 				//printf("[Writer] .... Here after GetUOID , uoid:%s \n", uoid);
+				printf("[Writer] .... Writing status(0) UOID : %s\n",uoid);
 				fflush(stdout);
 
 				struct CachePacket packet;
@@ -337,7 +401,7 @@ void *connectionWriterThread(void *args) {
 
 			case 1 :
 
-				//printf("[Writer] .... Here1.5\n");
+				printf("[Writer] .... Writing status(1) UOID : %s\n",outgoingMsg.uoid);
 				fflush(stdout);
 				MEMSET_ZERO(header, HEADER_SIZE) ;
 				memcpy(header+1, outgoingMsg.uoid, SHA_DIGEST_LENGTH);
@@ -350,9 +414,10 @@ void *connectionWriterThread(void *args) {
 			case 2 :
 
 				//printf("[Writer] .... Here2.5\n");
+				printf("[Writer] .... Writing status(2) UOID : %s\n",outgoingMsg.uoid);
 				fflush(stdout);
 				MEMSET_ZERO(header, HEADER_SIZE) ;
-				memcpy(header+1, uoid, SHA_DIGEST_LENGTH);
+				memcpy(header+1, outgoingMsg.uoid, SHA_DIGEST_LENGTH);
 
 				//printf("[Writer] .... Here3\n");
 				fflush(stdout);
@@ -361,10 +426,12 @@ void *connectionWriterThread(void *args) {
 
 			case 3 :
 
+				printf("[Writer] .... Writing status(3) UOID : %s\n",outgoingMsg.uoid);
+				fflush(stdout);
 				//printf("[Writer] .... Here3.5\n");
 				fflush(stdout);
 				MEMSET_ZERO(header, HEADER_SIZE) ;
-				memcpy(header+1, uoid, SHA_DIGEST_LENGTH);
+				memcpy(header+1, outgoingMsg.uoid, SHA_DIGEST_LENGTH);
 
 				//printf("[Writer] .... Here4\n");
 				fflush(stdout);
@@ -512,7 +579,7 @@ void *connectionWriterThread(void *args) {
 			header[0] = STATUS_REQ;
 			memcpy((char *)header + 23, &(bufferLength), 4) ;
 			memcpy((char *)header + 21, &(outgoingMsg.ttl), 1) ;
-			printf("*****The buffer length in header is:%c",header[23]);
+
 
 		}
 		else if (outgoingMsg.msgType == NOTIFY)
@@ -541,8 +608,7 @@ void *connectionWriterThread(void *args) {
 				bufferLength = outgoingMsg.dataLen ;
 
 			}
-			else
-			{
+			else{
 
 				printf("[Writer] status != 1\n");
 
@@ -565,8 +631,7 @@ void *connectionWriterThread(void *args) {
 				for (int i = 24 ; i < (int)lenth ; ++i)
 					buffer[i] = host[i-24] ;
 
-				if(outgoingMsg.statusType == 0x01)
-				{
+				if(outgoingMsg.statusType == 0x01){
 
 					printf("[Writer]Send STATUS RESPONSE to all neighbours....\n");
 					for(NEIGHBOUR_MAP::iterator currNeighIter = currentNeighbours.begin()
@@ -596,44 +661,6 @@ void *connectionWriterThread(void *args) {
 
 						for (int i = bufferLength - lengthTwo + 2 ; i < (int)bufferLength ; ++i) {
 							buffer[i] = host[i -(bufferLength-lengthTwo+2)] ;
-						}
-					}
-				}
-				else if(outgoingMsg.statusType == 0x02)
-				{
-					list <int> allMyFileInfo;
-					struct FileMetadata fMetadata;
-					allMyFileInfo = getAllFileInfo();
-					string strFileMetadata("");
-					
-					list <int>::iterator x = allMyFileInfo.begin();
-					
-					for(;x!=allMyFileInfo.end();)
-					{
-						fMetadata = createFileMetadata(*x);
-						fileMap[string((char*)fMetadata.fileID,20)]=(*x);
-						x++;
-						UINT tempLengthTwo = 0 ;
-						strFileMetadata=toStringMetaData(fMetadata);
-						int newStrSize=strFileMetadata.size();
-						lenth=lenth+newStrSize+4;
-						buffer=(UCHAR*)realloc(buffer,lenth);
-						
-						if(x!=allMyFileInfo.end())
-						{
-							memcpy(&buffer[lenth-newStrSize-4],&(newStrSize),4);
-						}
-						else
-						{
-							tempLengthTwo=0;
-							memcpy(&buffer[lenth-newStrSize-4], &(tempLengthTwo), 4);
-						}
-						x--;
-						int z=bufferLength-newStrSize;
-						for(;z<(int)lenth;)
-						{
-							buffer[z]=strFileMetadata[z-lenth+newStrSize];
-							z++;
 						}
 					}
 				}
@@ -670,14 +697,6 @@ void *connectionWriterThread(void *args) {
 			rewind (fileRef);
 
 			printf("[Writer]\t Store... seek file size:%ld\n", lSize);
-//			char fileBuf[101];
-//			int retBytes = fread(fileBuf, 1, 100, fileRef);
-//			fileBuf[101]='\0';
-//			printf("[Writer]\t Store... file contents{%s}\n", fileBuf);
-
-			// rewing file reference ptr
-//			rewind(fileRef);
-
 
 
 			if(outgoingMsg.status != 1) {
@@ -726,6 +745,206 @@ void *connectionWriterThread(void *args) {
 												outgoingMsg.metadatLen, 	bufferLength, 		totalStoreMsgLen);
 			
 		}
+        else if (outgoingMsg.msgType == SEARCH_REQ){
+
+        	header[0] = STATUS_REQ;
+
+        	bool doNothing = false;
+
+            float fNothing = 0.0f;
+            int iNothing = 49;
+
+            memcpy((char *) header + 21, &(outgoingMsg.ttl), 1) ;
+
+            header[22] = 0x00 ;
+
+            // Search Message request
+                if (outgoingMsg.status != 1){
+
+
+                    bufferLength =  outgoingMsg.dataLen;
+
+                    fNothing = 1.5f;
+
+                    buffer = (UCHAR *)malloc(outgoingMsg.dataLen + 1) ;
+                    bufferLength += 1;
+
+
+                    if(doNothing) {
+
+                    	fNothing = 1.0f;
+
+                    } else {
+                    	fNothing = 4.5f;
+                    }
+
+
+                    MEMSET_ZERO(buffer, bufferLength) ;
+
+                    fNothing = 10.4;
+                    iNothing++;
+
+                    buffer[0] = outgoingMsg.q_type;
+
+
+                    if(doNothing)
+                    	fNothing = 4.5f;
+                    else
+                    	fNothing = 1.0f;
+
+                    for(int i=0; i < -1; i++) {
+						iNothing -= 10;
+					}
+
+                    // copy from 1 - buffLength-1
+                    memcpy(buffer+1 , (char *)outgoingMsg.query, bufferLength-1);
+
+                }
+                else{
+
+                	bufferLength = outgoingMsg.dataLen ;
+
+                	if(doNothing)
+                    	fNothing = 1.0f;
+                    else
+                    	fNothing = 4.5f;
+
+                    buffer = outgoingMsg.buffer ;
+                }
+
+                memcpy((char *) header + 23, &(bufferLength), 4) ;
+
+        } else if (outgoingMsg.msgType == SEARCH_RSP) {
+
+        	printf("[Writer]\t Sending Search Response\n") ;
+
+        	bool doNothing = false;
+            float fNothing = 0.0f;
+            int iNothing = 49;
+
+
+            header[0] = SEARCH_RSP;
+            header[22] = 0x00 ;
+            iNothing--;
+            memcpy((char *) header + 21, &(outgoingMsg.ttl), 1) ;
+
+
+        	if (outgoingMsg.status == 1){
+
+        			bufferLength = outgoingMsg.dataLen ;
+
+        			fNothing++;
+        			// set buffer
+					buffer = (UCHAR *)malloc(outgoingMsg.dataLen) ;
+					MEMSET_ZERO(buffer, outgoingMsg.dataLen);
+					memcpy(buffer , outgoingMsg.buffer, outgoingMsg.dataLen);
+
+			}
+			else{
+					// Response originating from here. prepare a NEW response
+
+					bufferLength = 20 ;
+					buffer = (UCHAR *)malloc(bufferLength) ;
+					MEMSET_ZERO(buffer, bufferLength);
+
+					memcpy(buffer, outgoingMsg.uoid, 20);
+
+					list<int> tempList ;
+
+					doNothing = !doNothing;
+					if(!doNothing) {
+						iNothing--;
+					}
+
+					string strQuery ((char *)outgoingMsg.query);
+
+					if(outgoingMsg.q_type == 0x02) {
+
+							tempList = searchForSha1(strQuery, false) ;
+
+					}
+
+					doNothing = !doNothing;
+					if(doNothing) {
+						iNothing++;
+					}
+
+					if(outgoingMsg.q_type == 0x01){
+
+							tempList = searchForFileName(strQuery, false) ;
+
+					}
+
+					doNothing = !doNothing;
+					if(doNothing) {
+						iNothing++;
+					}
+
+					if(outgoingMsg.q_type == 0x03) {
+
+							tempList = searchForKeywords(strQuery, false) ;
+					}
+
+					if (tempList.empty()){
+
+			              printf("[Writer]\t Search RSP.. No records found\n") ;
+						  continue;
+					}
+
+					doNothing = !doNothing;
+					if(!doNothing) {
+						iNothing--;
+					}
+
+					struct FileMetadata fMeta ;
+					string metaStr("")  ;
+
+					/**
+					 * Todo: MUST CHANGE THIS SECTION
+					 */
+					// serialize this to buffer
+					for(list<int>::iterator it = tempList.begin(); it != tempList.end(); it++){
+
+							fMeta = createFileMetadata(*it) ;
+
+							fileIDMap[string((char *)fMeta.fileID, 20)] = (*it) ;
+							metaStr = toStringMetaData(fMeta) ;
+
+							uint32_t metadataLen = metaStr.size() ;
+							bufferLength += metadataLen + 24 ;
+							buffer = (UCHAR *)realloc(buffer, bufferLength) ;
+
+							++it ;
+							if( it == tempList.end()){
+
+								uint32_t zeroLen = 0 ;
+								memcpy(&buffer[bufferLength - metadataLen - 24], &zeroLen, 4) ;
+							}
+							else{
+
+								memcpy(&buffer[bufferLength - metadataLen - 24], &metadataLen, 4) ;
+							}
+
+							--it ;
+							// memcpy(&buffer[bufferLength - len1 - 24], &len1, 4) ;
+
+							// bufferLength - len1 - bufferLength + len1 +20);
+							//memcpy(buffer + bufferLength-len1-20, fMeta.fileID, 20);
+							for(UINT h = (bufferLength-metadataLen-20) ; h < (bufferLength - metadataLen) ; ++h)
+									buffer[h] = fMeta.fileID[h - (bufferLength-metadataLen-20)] ;
+
+							for(UINT h = (bufferLength-metadataLen) ; h < bufferLength ; ++h){
+									buffer[h] = metaStr[h-bufferLength+metadataLen] ;
+									// printf("%c", buffer[h]) ;
+							}
+
+							// memcpy(&buffer[len-24], metaStr.c_str(), len1) ;
+					}
+				}
+
+        		memcpy((char *) header + 23, &(bufferLength), 4) ;
+        }
+
 
 		printf("[Writer]\t .... Reset KEEP_ALIVE\n");
 		fflush(stdout);
@@ -802,10 +1021,10 @@ void *connectionWriterThread(void *args) {
 			//printf("[Writer]\t..... rewind fileRef\n");
 //			rewind(fileRef);
 
-            unsigned char chunk[8192] ;
+            UCHAR chunk[8192] ;
             // read the content of the file and write on the socket
             //while(!feof(fp)){
-            while(1){
+            /***            while(1){
                     memset(chunk, '\0' , 8192) ;
                     int numBytes = fread(chunk, 1, 8192, fileRef) ;
                     totalBytes += numBytes;
@@ -815,8 +1034,8 @@ void *connectionWriterThread(void *args) {
                     if(numBytes == 0)
                             break;
                     write(connSocket, chunk, numBytes) ;
-            }
-/***
+            }**/
+
 
 			for(;;) {
 
@@ -825,21 +1044,21 @@ void *connectionWriterThread(void *args) {
 				fflush(stdout);
 				if(fileRef == NULL) {
 
-					printf("[Writer]\t..... fileRef was NULL!");
+//					printf("[Writer]\t..... fileRef was NULL!");
 					fflush(stdout);
 					break;
 				}
-				printf("[Writer]..... about to read 1\n");
+	//			printf("[Writer]..... about to read 1\n");
 				fflush(stdout);
 				int numBytes = fread(fileChunk, 1, 1, fileRef) ;
 				totalBytes += numBytes;
 				if(numBytes == 0) {
 
-					printf("[Writer]..... read 0 bytes BREAK\n");
+		//			printf("[Writer]..... read 0 bytes BREAK\n");
 					fflush(stdout);
 					break;
 				}
-				printf("[Writer]..... write CHUNK, till now: %d\n", bytesWrittenTillNow);
+			//	printf("[Writer]..... write CHUNK, till now: %d\n", bytesWrittenTillNow);
 				fflush(stdout);
 				retCode = write(connSocket, fileChunk, numBytes) ;
 				bytesWrittenTillNow += retCode;
@@ -847,7 +1066,7 @@ void *connectionWriterThread(void *args) {
 									fileChunk, (int)fileStat.st_size,numBytes, bytesWrittenTillNow);
 				fflush(stdout);
 			}
-**/
+
 			if(fileRef != NULL) {
 
 				printf("[Writer] \t..... CLOSE fileRef\n");
@@ -1190,7 +1409,7 @@ void floodStatusRequestsIntoNetwork(){
 
 	printf("[Status] Gather status info, flood status request..\n");
 	UCHAR uoid[SHA_DIGEST_LENGTH] ;
-	GetUOID( const_cast<char *> ("msg"), uoid, sizeof(uoid)) ;
+	GetUOID( const_cast<char *> ("msg"), uoid, sizeof(uoid), "FloodStatus") ;
 	//			memcpy((char *)&header[1], uoid, 20) ;
 
 

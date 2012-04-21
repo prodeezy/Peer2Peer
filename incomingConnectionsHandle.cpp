@@ -679,51 +679,26 @@ void handleRequestByCase(int connSocketFd,
 		//printf("[Reader] Received STATUS ... cache check \n" );
 
 
-		if (MessageCache.find( TO_STRING((const char *)originalMsg_UOID , SHA_DIGEST_LENGTH)) != MessageCache.end())
-		{
+		if (MessageCache.find( TO_STRING((const char *)originalMsg_UOID , SHA_DIGEST_LENGTH)) != MessageCache.end()){
+
 			//message origiated from here
 			//printf("[Reader-%d] Received STATUS ... Message originated from this node...\n", connSocketFd) ;
-			if(MessageCache [ TO_STRING((const char *)originalMsg_UOID, SHA_DIGEST_LENGTH)   ].status == 1)
-			{
+			if(MessageCache [ TO_STRING((const char *)originalMsg_UOID, SHA_DIGEST_LENGTH)   ].status == 1){
 
 				//printf("[Reader] Received STATUS ... handleMsgToBeForwarded \n" );
 				handleMsgToBeForwarded(originalMsg_UOID, msgType, dataLen, buffer, uoid) ;
 
-			} 
-			else if (MessageCache [ TO_STRING((const char *)originalMsg_UOID , SHA_DIGEST_LENGTH) ].status == 0)
-			{
-				//printf("[Reader] Received STATUS ... insert into status responses \n" );
-				if(MessageCache [ TO_STRING((const char *)originalMsg_UOID , SHA_DIGEST_LENGTH) ].status_type=0x01)
-				{
+			} else if (MessageCache [ TO_STRING((const char *)originalMsg_UOID , SHA_DIGEST_LENGTH) ].status == 0){
+
+				//printf("[Reader] Received STATUS status == 0 \n" );
+				// Case of status neighbors
+				//if(MessageCache [ TO_STRING((const char *)originalMsg_UOID, SHA_DIGEST_LENGTH)].status_type == 0x01){
+
+					//printf("[Reader] Received STATUS ... insert into status responses \n" );
 					handleStatusNeighboursCommand(tempLength, dataLen, buffer, n) ;
-				}
-				else
-				{
-					LOCK_ON(&statusMsgLock);
-					if(statusTimerFlag)
-					{
-						int totalLengthTillHPHN = tempLength + 22;
-						if(totalLengthTillHPHN < (int)dataLen)
-						{
-							UINT recordLen = 0;
-							memcpy((UINT*)&recordLen,&buffer[totalLengthTillHPHN],4);
-							if(recordLen == 0)
-								recordLen = dataLen - totalLengthTillHPHN;
-							
-							string dataRecord((char*)&buffer[totalLengthTillHPHN],recordLen);
-							statusFilesResponsesOfNodes[n].push_front(dataRecord);
-						}
-						else
-						{
-							statusFilesResponsesOfNodes[n];
-						}
-					}
-					LOCK_OFF(&statusMsgLock) ;
-				}
+				//}
 			}
-		} 
-		else 
-		{
+		} else {
 
 			//printf("[Reader] Received STATUS ... Message not from here.. return\n");
 			return;
@@ -819,20 +794,25 @@ void handleRequestByCase(int connSocketFd,
 
 
 
-		printf("[Reader]\t ...... MessageCache ............");
-		for(CACHEPACKET_MAP::iterator iter = MessageCache.begin(); iter!= MessageCache.end(); iter++) {
+			printf("[Reader]\t ...... MessageCache ............");
+			for(CACHEPACKET_MAP::iterator iter = MessageCache.begin(); iter!= MessageCache.end(); iter++) {
 
-			string sUoid = (*iter).first;
-			struct CachePacket pkt = (*iter).second;
-			printf("[Reader]\t\tuoid=%s , Packet{sock=%d, status=%d}\n",
-					        sUoid.c_str(), 	pkt.reqSockfd, 	  pkt.status );
-		}
+				string sUoid = (*iter).first;
+				struct CachePacket pkt = (*iter).second;
+				printf("[Reader]\t\tuoid=%02x , Packet{sock=%d, status=%d}\n",
+								sUoid.c_str(), 	pkt.reqSockfd, 	  pkt.status );
+			}
 
-		printf("[Reader]\t lookup uoid:%s\n", uoidStr.c_str());
 
-		if(MessageCache.find(uoidStr) == MessageCache.end()) {
+		printf("[Reader]\t Lookup uoid:%s\n", uoidStr.c_str());
 
-			printf("[Reader] \t NEW Store request, couldn't find in MsgCache\n");
+
+		bool msgNotinCache = (MessageCache.find(uoidStr) == MessageCache.end());
+
+
+		if(msgNotinCache) {
+
+			printf("[Reader] \t __NEW__ Store request, couldn't find in MsgCache\n");
 
 			LOCK_OFF(&msgCacheLock);
 
@@ -843,6 +823,7 @@ void handleRequestByCase(int connSocketFd,
 
 
 			LOCK_ON(&msgCacheLock);
+				printf("[Reader] \t _________________ ADD PACKET TO MSG_CACHE __________________\n");
 				MessageCache[uoidStr] = packet;
 			LOCK_OFF(&msgCacheLock);
 
@@ -851,48 +832,99 @@ void handleRequestByCase(int connSocketFd,
 			if(coinFlip <= metadata->storeProb) {
 
 				printf("[Reader] \tStore... accept and keep this store message locally\n");
-				//TODO:write file to cache
-				string strMetaData((char *)&buffer[4], dataLen);
 
-				struct FileMetadata fileMetadata ;//= readMetaDataFromStr(strMetaData.c_str());
+				// Write file to cache
+				printf("[Reader]\tStore... to string buffer:%s, datalen:%d\n", buffer, dataLen);
+				string strMetaData((char *)buffer, dataLen);
 
-				//TODO: check the indexes if file exists
-				bool doesFileExist = false; // lookupIndices();
+				printf("[Reader] \tStore... parse string for metadata struct\n");
+				struct FileMetadata constructedFileMeta = createMetadataFromString(strMetaData);
+				fflush(stdout);
 
+				// Check the indexes if file exists
+				bool doesFileExist = (FileNameIndexMap.find((char *)constructedFileMeta.fName) != FileNameIndexMap.end());
+
+				/**
+				 int doesFileExist(struct metaData metadata)
+				{
+						list<int > tempList = fileNameSearch(metadata.fileName);
+						for(list<int> ::iterator it = tempList.begin();it!=tempList.end();it++)
+						{
+								struct metaData metadata_temp = populateMetaData((*it));
+								if(strncmp((char *)metadata_temp.nonce, (char *)metadata.nonce, 20)==0)
+										return (*it);
+						}
+						return -1;
+				}
+				 */
+
+				fflush(stdout);
+
+				int latestFileNumber = -1;
 				if(doesFileExist) {
 
-					// update the LRU
+					printf("[Reader]\tStore... Metadata file DOES exist\n");
 
-				} 
-				else 
-				{
+					list<int> fNumbers = FileNameIndexMap[(char *)constructedFileMeta.fName];
+			        for(list<int>::iterator itFNum = fNumbers.begin() ; itFNum!=fNumbers.end() ; itFNum++)
+			        {
+			        		printf("[Reader]\tStore... Read meta file from DISK\n");
+			                struct FileMetadata tempFileMeta = createFileMetadata((*itFNum));
+			                if(strncmp((char *)constructedFileMeta.NONCE,
+			                		(char *)tempFileMeta.NONCE, 20)   ==    0) {
+
+			                        printf ("[Reader] \t Got latest file number : %d\n",*itFNum);
+			                        latestFileNumber = *itFNum;
+			                        break;
+			                }
+			        }
+
+			        printf("[Reader] \tStore... lookup latestFileNumber:%d in FileNameIndexMap[%s]\n",
+													latestFileNumber, (char *)constructedFileMeta.fName);
+
+
+			        if(latestFileNumber != -1) {
+
+						// update the LRU
+						printf("[Reader] \t Store .. Update LRU , FileNumber:%d already exists", latestFileNumber);
+						updateLRU(latestFileNumber);
+			        }
+				}
+
+				if(latestFileNumber == -1) {
 
 					int fileNumber = incfNumber();  //update global file number
 					bool success=false;
-					// success = storeInLRU();
+					printf("[Reader] \t Store .. Add:%d to LRU\n", fileNumber);
+					success = addToLRU((int)fileNumber, constructedFileMeta);
 
 					if(success) {
 
 						// write data
+						printf("[Reader] Write temp file(%s) to final data file (%s)\n",
+											tempFileName, 		constructedFileMeta.fName);
 						FILE* tempFile = fopen(tempFileName, "rb");
-						FILE* dataFile = fopen((char *)fileMetadata.fName, "wb");
+						FILE* dataFile = fopen((char *)constructedFileMeta.fName, "wb");
 						char letter;
 						while(fread(&letter, 1, 1, tempFile)) {
 
 							fwrite(&letter, 1, 1, dataFile);
 						}
 						fclose(tempFile);
+
 						int closeRet = fclose(dataFile);
 						if(closeRet != 0) {
 
 							printf("[Reader] ERROR:Closing data file FAILED! Try emptying space!!\n");
-
+							/**
+							 * Todo: check disk quota here
+							 */
 						} else {
 
 							printf("[Reader] \tStore... write metadata to file\n");
-							writeMetadataToFile(fileMetadata, fileNumber);
 
-							populateIndexes(fileMetadata , fileNumber);
+							writeMetadataToFile(constructedFileMeta, fileNumber);
+							populateIndexes(constructedFileMeta , fileNumber);
 						}
 					}
 				}
@@ -953,7 +985,109 @@ void handleRequestByCase(int connSocketFd,
 			LOCK_OFF(&msgCacheLock);
 			return;
 		}
+
 		printf("[Writer]\t Store... req handling done!!!\n");
+
+	} else if(msgType == SEARCH_REQ) {
+
+        printf("[Reader] \tSearch request received\n") ;
+
+        // Check if the message has already been received or not
+		string strUOID ((const char *)uoid, SHA_DIGEST_LENGTH);
+
+		LOCK_ON(&msgCacheLock) ;
+        	bool foundInCache = (MessageCache.find( strUOID ) != MessageCache.end());
+        LOCK_OFF(&msgCacheLock) ;
+
+        if (foundInCache){
+
+        	printf("[Reader] \tMessage has already been received.\n") ;
+            return ;
+
+        } else {
+
+            uint8_t status_type = 0 ;
+            memcpy(&status_type, buffer, 1) ;
+
+            // push search response
+
+            // Respond the sender with the Search response
+            struct Message respMsg ;
+            respMsg.q_type = status_type ;
+            respMsg.status = 0;
+            respMsg.msgType = SEARCH_RSP ;
+            respMsg.dataLen = dataLen ;
+            respMsg.query = (UCHAR *)malloc(dataLen) ;
+            respMsg.ttl = 1 ;
+
+            MEMSET_ZERO(respMsg.uoid, SHA_DIGEST_LENGTH);
+            memcpy(respMsg.uoid , uoid , SHA_DIGEST_LENGTH);
+
+            memcpy(respMsg.query , buffer+1, dataLen-1);
+            respMsg.query[dataLen-1] = '\0' ;
+
+
+            struct CachePacket packet;
+            packet.reqSockfd = connSocketFd ;
+            packet.status = 1 ;
+            packet.msgLifetimeInCache = metadata->msgLifeTime;
+
+            pthread_mutex_lock(&msgCacheLock) ;
+            	MessageCache[ strUOID ] = packet ;
+            pthread_mutex_unlock(&msgCacheLock) ;
+
+            safePushMessageinQ(connSocketFd, respMsg , "Reader") ;
+
+            ttl = ttl -1 ;
+
+            // Flood the request message to neighbours
+            if ( metadata->ttl > 0 && ttl >= 1 ){
+
+                    LOCK_ON(&currentNeighboursLock) ;
+
+						for (NEIGHBOUR_MAP_ITERATOR it = currentNeighbours.begin(); it != currentNeighbours.end(); ++it)
+						{
+							int neighSocket = (*it).second;
+
+								if( neighSocket = connSocketFd ){
+									continue;
+								}
+
+								bool doNothing = false;
+								int iNothing = 10;
+								float fNothing = 0.5;
+
+								struct Message fwdRequest ;
+
+								if(doNothing)
+									fNothing = 1.7;
+								else
+									iNothing = 100;
+
+								fwdRequest.dataLen = dataLen ;
+								fwdRequest.msgType = SEARCH_REQ ;
+								fwdRequest.ttl = (UINT)(ttl) < (UINT)metadata->ttl ? (ttl) : metadata->ttl  ;
+
+
+								if(doNothing)
+									fNothing = 1.7;
+								else
+									iNothing = 100;
+
+								MEMSET_ZERO(fwdRequest.uoid, SHA_DIGEST_LENGTH) ;
+								memcpy(fwdRequest.uoid , uoid, 20);
+
+								fwdRequest.status = 1;
+								fwdRequest.buffer = (UCHAR *)malloc(dataLen) ;
+								MEMSET_ZERO(fwdRequest.buffer, dataLen);
+								memcpy(fwdRequest.buffer , buffer , dataLen);
+
+								safePushMessageinQ(neighSocket, fwdRequest, "Reader") ;
+						}
+
+                    LOCK_OFF(&currentNeighboursLock);
+            }
+        }
 	}
 
 	//printf("[Reader] \t Reset keepalive\n");

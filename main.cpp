@@ -33,6 +33,7 @@ map<string, list<int> > FileNameIndexMap;
 map<string, list<int> > SHA1IndexMap;
 map<string, int> fileIDMap;
 struct NodeInfo n;
+int cacheSizeReached = 0;
 pthread_mutex_t searchMsgLock;
 pthread_cond_t searchMsgCV;
 pthread_mutex_t countOfSearchResLock;
@@ -339,25 +340,47 @@ void doLog(UCHAR *tobewrittendata)
 
 //**********************************************
 
+//get the UOID of the messages
+UCHAR *GetUOID(char *obj_type, unsigned char *uoid_buf, long unsigned int uoid_buf_sz, const char *context){
+
+		static unsigned long seq_no=(unsigned long)1;
+        unsigned char sha1_buf[SHA_DIGEST_LENGTH], str_buf[104];
+
+        snprintf((char *)str_buf, sizeof(str_buf), "%s_%s_%1ld", metadata->idNodeInstance, obj_type, (long)seq_no++);
+        SHA1(str_buf, strlen((const char *)str_buf), sha1_buf);
+        memset(uoid_buf, 0, uoid_buf_sz);
+        memcpy(uoid_buf, sha1_buf,min(uoid_buf_sz,sizeof(sha1_buf)));
+
+        printf("*********** NEW UOID :[%s] , type=[%s] , creator=[%s] \n" , uoid_buf , obj_type, context);
+
+        return uoid_buf;
+}
+
+/***
 UCHAR *GetUOID(char *obj_type,
 			   UCHAR *uoid_buf,
-			   long unsigned int uoid_buf_sz)
+			   long unsigned int uoid_buf_sz,
+			   const char *context)
 {
-
 
 	UCHAR strBuf[104];
 	UCHAR sha1_buf[SHA_DIGEST_LENGTH];
 
 	static unsigned long seqNum=(unsigned long)1;
 
+	MEMSET_ZERO(strBuf, 104);
 	snprintf((char *)strBuf, sizeof(strBuf), "%s_%s_%1ld", metadata->idNodeInstance, obj_type, (long)seqNum++);
 	SHA1(strBuf, strlen((const char *)strBuf), sha1_buf);
 
 	MEMSET_ZERO(uoid_buf, uoid_buf_sz);
 	memcpy(uoid_buf, sha1_buf, min(uoid_buf_sz,sizeof(sha1_buf)));
 
+
+	printf("*********** NEW UOID :[%s] , type=[%s] , creator=[%s] \n" , uoid_buf , obj_type, context);
+
 	return uoid_buf;
 }
+**/
 
 void initializeLocks()
 {
@@ -1139,6 +1162,11 @@ void init()
 	if(metadata->iAmBeacon)
 	{
 		printf("[Main] I am a Beacon \n");
+
+		LOCK_ON(&msgCacheLock);
+			MessageCache.clear();
+		LOCK_OFF(&msgCacheLock);
+
 		//create server thread which continuesly accepts connections
 		pthread_t serverThread;
 

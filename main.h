@@ -29,6 +29,7 @@
 #include <sys/stat.h>
 #include <fstream>
 
+
 #define HEADER_SIZE 								27
 #define SHA_DIGEST_LENGTH 							20
 
@@ -45,7 +46,8 @@
 #define STORE_REQ	0xCC
 #define GET_REQ		0xDC
 #define GET_RESP	0xDB
-
+#define SEARCH_REQ  0xEC
+#define SEARCH_RSP  0xEB
 
 using namespace std ;
 
@@ -55,7 +57,7 @@ using namespace std ;
 #define TO_STRING(const_char_arr, len)					string(const_char_arr, len)
 
 
-//define DEBUGGING_MEMORY_CORRUPTION
+//#define DEBUGGING_MEMORY_CORRUPTION
 /* comment out the above line when you are done debugging */
 #ifdef DEBUGGING_MEMORY_CORRUPTION
 #ifdef free
@@ -83,15 +85,15 @@ typedef list<struct JoinResponseInfo>					JOINRESPINFO_LIST;
 
 struct FileMetadata 
 {
-	
-	UCHAR fileID[20];
-	list<string> *keywords;
-	UCHAR bitVector[128];
-	UCHAR fName[256];
-	UINT fSize;
-	UINT fileNumber;
+
 	UCHAR NONCE[20];
 	UCHAR SHA1[20];
+	UCHAR bitVector[128];
+	UCHAR fileID[20];
+	UINT fSize;
+	UINT fileNumber;
+	list<string> *keywords;
+	UCHAR fName[256];
 
 };
 
@@ -249,7 +251,7 @@ extern int acceptServerSocket ;
 extern int nodeProcessId;
 extern int acceptProcessId;
 extern pthread_mutex_t getvalue;
-extern FileMetadata *fMetadata;
+//extern FileMetadata *fMetadata;
 //extern FILE *loggerRef = NULL;
 extern pthread_mutex_t searchMsgLock;
 extern pthread_mutex_t countOfSearchResLock;
@@ -259,7 +261,7 @@ extern map<string, list<int> > FileNameIndexMap;
 extern map<string, list<int> > SHA1IndexMap;
 extern map<string, int> fileIDMap;
 extern list<int> cacheLRU;
-//extern map<string, int> fileIDMap;
+extern int cacheSizeReached;
 extern map<int, struct FileMetadata> fileDisplayIndexMap;
 extern map<struct NodeInfo, list<string> >statusFilesResponsesOfNodes;
 extern map<string,int>fileMap;
@@ -290,7 +292,7 @@ extern void fillInfoToConnectionMap(   	int newreqSockfd,
 
 
 extern set< set<struct NodeInfo> > statusProbeResponses;
-UCHAR *GetUOID(char *obj_type, UCHAR *uoid_buf, long unsigned int uoid_buf_sz);
+UCHAR *GetUOID(char *obj_type, UCHAR *uoid_buf, long unsigned int uoid_buf_sz, const char *context);
 extern void destroyConnectionAndCleanup(int reqSockfd);
 
 // Thread implementation functions
@@ -324,9 +326,10 @@ extern void populateIndexes(struct FileMetadata f,unsigned int gfn);
 extern void writeIndex();
 extern void readIndex();
 extern int incfNumber();
+extern int covertToHex(unsigned char *str, int len);
 extern void writeMetadataToFile(struct FileMetadata fMetadata,int globalfNo);
 extern void writeDataToFile(struct FileMetadata fMetadata,int globalfNo);
-extern unsigned char* convertToHex(unsigned char *str, int len);
+extern unsigned char* convertToHex(int len , UCHAR *str);
 extern void fireSTORERequest(struct FileMetadata fileMetadata, char *fileName);
 extern void initiateLocalFilenameSearch(unsigned char *fileToBeSearched);
 extern void initiateLocalSha1Search(unsigned char* hashvalue);
@@ -336,3 +339,12 @@ extern void displayFileMetadata(struct FileMetadata fMetadata);
 extern void constructSearchMsg(UCHAR *dataForMsg,UCHAR type);
 extern list<int> getAllFileInfo();
 extern string toStringMetaData(struct FileMetadata metadata);
+
+extern void updateLRU(int fNumber);
+int addToLRU(int fNumber, struct FileMetadata fMetadata);
+extern struct FileMetadata createMetadataFromString(string metadataStr) ;
+extern void deleteFileNumberFromIndicesAndLRU(int delFNumber) ;
+
+extern list<int> searchForFileName(string keywordsStr, bool doNothing);
+extern list<int> searchForSha1(string keywordsStr, bool doNothing);
+extern list<int> searchForKeywords(string keywordsStr, bool doNothing);

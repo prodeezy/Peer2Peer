@@ -198,6 +198,17 @@ void *keyboard_thread(void *dummy)
 
             MEMSET_ZERO(&tempMetadata.NONCE, 128);
             tempMetadata.keywords =  new list<string >();
+            tempMetadata.keywords->clear();
+
+            //string sampleRec("SAMPLE1");
+
+            //tempMetadata.keywords->push_back(sampleRec);
+
+            //sampleRec = "SAMPLE2";
+            //tempMetadata.keywords->push_back(sampleRec);
+
+
+
             MEMSET_ZERO(&tempMetadata.bitVector, 128);
 
 
@@ -319,7 +330,7 @@ void *keyboard_thread(void *dummy)
 			unsigned char psswd[SHA_DIGEST_LENGTH];
 			int globalfNumber=incfNumber();
 			printf("global file updated:%d\n",globalfNumber);
-			GetUOID(const_cast<char *> ("password"), psswd, sizeof(psswd));
+			GetUOID(const_cast<char *> ("password"), psswd, sizeof(psswd), "Keyboard");
 			printf("The password obtained is:%s\n",psswd);
 			sprintf((char*)psswdfName,"%s/file/%d.pass",metadata->currWorkingDir,globalfNumber);
 			FILE *psswdfptr=fopen((char*)psswdfName,"w+");
@@ -342,7 +353,6 @@ void *keyboard_thread(void *dummy)
 				printf("[keyboard]\t Start flooding store msg\n");
 				fireSTORERequest(tempMetadata, (char *)tempMetadata.fName);
 			}
-			printf("Local store handling DONE!!!\n");
 		}
 		
 		else if(strstr((char*)input,"search")!=NULL)
@@ -410,7 +420,7 @@ void *keyboard_thread(void *dummy)
 			
 			if(!strcasecmp((char*)pattern,"sha1hash"))
 			{
-				unsigned char* hash=convertToHex(value,20);
+				unsigned char* hash=convertToHex(20, value);
 				printf("Calling local sha1 search method\n");
 				int y=0;
 				for(;y<SHA_DIGEST_LENGTH;)
@@ -527,7 +537,7 @@ void *keyboard_thread(void *dummy)
 				UCHAR msg_uoid[SHA_DIGEST_LENGTH];
 				cp.msgLifetimeInCache=metadata->msgLifeTime;
 				LOCK_ON(&msgCacheLock);
-				GetUOID( const_cast<char *> ("msg"), msg_uoid, sizeof(msg_uoid));
+				GetUOID( const_cast<char *> ("msg"), msg_uoid, sizeof(msg_uoid), "keyboard");
 				MessageCache[string((const char*)msg_uoid,SHA_DIGEST_LENGTH)]=cp;
 				LOCK_OFF(&msgCacheLock);
 				
